@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.IO.Compression;
+using System.Linq;
 using System.Xml;
 using System.Xml.Linq;
 using System.Xml.XPath;
@@ -269,6 +270,14 @@ namespace SheetReader
             }
         }
 
+        protected class XlsxColumn : Column
+        {
+            public XlsxColumn(int index)
+            {
+                Index = index;
+            }
+        }
+
         protected class XlsxSheet : Sheet
         {
             public XlsxSheet(XlsxBook book, XElement element, XmlReader reader)
@@ -290,11 +299,9 @@ namespace SheetReader
             public XlsxBook Book { get; }
             public XElement Element { get; }
             public XmlReader Reader { get; }
+            public IDictionary<int, XlsxColumn> Columns { get; } = new Dictionary<int, XlsxColumn>();
 
-            public override IEnumerable<Column> EnumerateColumns()
-            {
-                yield break;
-            }
+            public override IEnumerable<Column> EnumerateColumns() => Columns.Values.OrderBy(c => c.Index);
 
             public override IEnumerable<Row> EnumerateRows()
             {
@@ -355,7 +362,6 @@ namespace SheetReader
 
                     if (Sheet.Reader.LocalName == "c" && Sheet.Reader.NamespaceURI == _main)
                     {
-                        var r = Sheet.Reader.GetAttribute("r");
                         var cell = new XlsxCell(this);
                         yield return cell;
                     }
@@ -372,6 +378,32 @@ namespace SheetReader
                 var reader = Row.Sheet.Reader;
                 var type = reader.GetAttribute("t");
                 var format = reader.GetAttribute("s");
+                var reference = reader.GetAttribute("r");
+                if (reference != null)
+                {
+                    if (reference == "AE15")
+                    {
+                    }
+
+                    var index = 0;
+                    foreach (var c in reference)
+                    {
+                        if (c < 'A' || c > 'Z')
+                            break;
+
+                        index = 26 * index + c - 'A' + 1;
+                    }
+                    ColumnIndex = index - 1;
+                }
+
+                if (row.Sheet.Columns.Count <= ColumnIndex)
+                {
+                    if (!row.Sheet.Columns.ContainsKey(ColumnIndex))
+                    {
+                        var column = new XlsxColumn(ColumnIndex);
+                        row.Sheet.Columns.Add(ColumnIndex, column);
+                    }
+                }
 
                 while (reader.Read())
                 {
@@ -444,9 +476,11 @@ namespace SheetReader
 
             public override IEnumerable<Cell> EnumerateCells()
             {
+                var index = 0;
                 while (Cells.MoveNext())
                 {
-                    yield return new Cell { Value = Cells.Current, RawValue = Cells.Current };
+                    yield return new Cell { ColumnIndex = index, Value = Cells.Current, RawValue = Cells.Current };
+                    index++;
                 }
             }
         }

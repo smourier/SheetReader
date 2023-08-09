@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.ObjectModel;
 using System.Linq;
 using System.Reflection;
 using System.Windows;
@@ -13,7 +14,10 @@ namespace SheetReader.AppTest
         public MainWindow()
         {
             InitializeComponent();
+            tc.ItemsSource = Sheets;
         }
+
+        public ObservableCollection<SheetData> Sheets { get; } = new();
 
         protected override void OnKeyDown(KeyEventArgs e)
         {
@@ -38,17 +42,37 @@ namespace SheetReader.AppTest
             if (ofd.ShowDialog() != true)
                 return;
 
-            tc.Items.Clear();
-
+            Sheets.Clear();
             var book = new Book();
             foreach (var sheet in book.EnumerateSheets(ofd.FileName))
             {
-                var data = new SheetData { Name = sheet.Name, IsHidden = !sheet.IsVisible };
+                // we need to load data for WPF data binding
+                var sheetData = new SheetData { Name = sheet.Name, IsHidden = !sheet.IsVisible };
                 foreach (var row in sheet.EnumerateRows())
                 {
-                    data.Rows.Add(row.EnumerateCells().ToList());
+                    var rowData = new RowData(row.Index, row.EnumerateCells().ToList());
+                    sheetData.Rows.Add(rowData);
                 }
-                tc.Items.Add(data);
+
+                sheetData.Columns = sheet.EnumerateColumns().ToList();
+                if (sheetData.Columns.Count > 0)
+                {
+                    sheetData.LastColumnIndex = sheetData.Columns.Max(x => x.Index);
+                }
+
+                if (sheetData.Rows.Count > 0)
+                {
+                    sheetData.LastRowIndex = sheetData.Rows.Max(x => x.RowIndex);
+                }
+                Sheets.Add(sheetData);
+            }
+
+            // not sure why, but with only 1 tab, binding doesn't work...
+            if (Sheets.Count == 1)
+            {
+                var dummy = new SheetData();
+                Sheets.Add(dummy);
+                Sheets.Remove(dummy);
             }
         }
     }

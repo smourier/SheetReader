@@ -67,7 +67,7 @@ namespace SheetReader
                 }
             }
 
-            var stream = File.OpenRead(filePath);
+            var stream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
             format.IsStreamOwned = true;
             format.InputFilePath = filePath;
             return EnumerateSheets(stream, format);

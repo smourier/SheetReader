@@ -1,5 +1,7 @@
 ﻿using System;
 using System.IO;
+using System.Linq;
+using System.Text;
 
 namespace SheetReader.Test
 {
@@ -23,11 +25,13 @@ namespace SheetReader.Test
             //    }
             //}
 
-
+            Console.OutputEncoding = Encoding.UTF8;
             foreach (var file in Directory.EnumerateFiles(".", "*.xlsx"))
             {
                 Console.WriteLine(file);
                 var book = new Book();
+                var visibleRows = 0;
+                var invisibleRows = 0;
                 foreach (var sheet in book.EnumerateSheets(file))
                 {
                     Console.WriteLine(sheet + " visible:" + sheet.IsVisible);
@@ -35,17 +39,23 @@ namespace SheetReader.Test
 
                     foreach (var row in sheet.EnumerateRows())
                     {
-                        Console.WriteLine("#" + row.Index);
+                        //Console.WriteLine("#" + row.Index);
                         if (!row.IsVisible)
                         {
-                            Console.WriteLine("HIDDEN! " + string.Join("\t", row.EnumerateCells()));
+                            invisibleRows++;
+                            //Console.WriteLine("HIDDEN! " + string.Join("\t", row.EnumerateCells()));
                             continue;
                         }
+                        visibleRows++;
 
-                        Console.WriteLine(string.Join("\t", row.EnumerateCells()));
+                        var cells = row.EnumerateCells().ToList();
+                        //Console.WriteLine(string.Join("\t", row.EnumerateCells()));
                     }
+                    break;
                 }
-                return;
+                Console.WriteLine("Visible rows:" + visibleRows);
+                Console.WriteLine("Invisible rows:" + invisibleRows);
+                //return;
             }
         }
     }

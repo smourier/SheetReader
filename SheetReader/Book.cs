@@ -15,7 +15,7 @@ namespace SheetReader
     public class Book
     {
         protected static XmlNamespaceManager XmlNamespaceManager { get; } = BuildMgr();
-        private const string _relOfficeUri = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument";
+        private const string _relDoc = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument";
         private const string _rels = "http://schemas.openxmlformats.org/package/2006/relationships";
         private const string _r = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
         private const string _ws = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet";
@@ -23,18 +23,28 @@ namespace SheetReader
         private const string _ss = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/sharedStrings";
         private const string _styles = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles";
 
+        private const string _oxRelDoc = "http://purl.oclc.org/ooxml/officeDocument/relationships/officeDocument";
+        private const string _oxStyles = "http://purl.oclc.org/ooxml/officeDocument/relationships/styles";
+        private const string _oxSs = "http://purl.oclc.org/ooxml/officeDocument/relationships/sharedStrings";
+        private const string _oxWs = "http://purl.oclc.org/ooxml/officeDocument/relationships/worksheet";
+        private const string _oxMain = "http://purl.oclc.org/ooxml/spreadsheetml/main";
+        private const string _oxR = "http://purl.oclc.org/ooxml/officeDocument/relationships";
+
         private static XmlNamespaceManager BuildMgr()
         {
             var mgr = new XmlNamespaceManager(new NameTable());
-            mgr.AddNamespace("rdoc", _relOfficeUri);
+            mgr.AddNamespace("rdoc", _relDoc);
             mgr.AddNamespace("rels", _rels);
             mgr.AddNamespace("r", _r);
             mgr.AddNamespace("ws", _ws);
             mgr.AddNamespace("ss", _ss);
             mgr.AddNamespace("styles", _styles);
             mgr.AddNamespace("main", _main);
+            mgr.AddNamespace("oxmain", _oxMain);
             return mgr;
         }
+
+        public static bool IsSupportedFileExtension(string extension) => extension.EqualsIgnoreCase(".xlsx") || extension.EqualsIgnoreCase(".csv");
 
         public virtual IEnumerable<Sheet> EnumerateSheets(string filePath, BookFormat? format = null)
         {
@@ -99,7 +109,7 @@ namespace SheetReader
 
             using var relsStream = relsEntry.Open();
             var relsDoc = XDocument.Load(relsStream);
-            var workbookEntryName = XlsxBook.GetTarget(relsDoc, _relOfficeUri, null);
+            var workbookEntryName = XlsxBook.GetTarget(relsDoc, null, _relDoc, _oxRelDoc);
             if (workbookEntryName == null)
                 yield break;
 
@@ -142,7 +152,7 @@ namespace SheetReader
                 RelsDocument = relsDocument;
 
                 var sharedStrings = new List<string>();
-                var sharedStringsEntryName = GetTarget(relsDocument, _ss, null);
+                var sharedStringsEntryName = GetTarget(relsDocument, null, _ss, _oxSs);
                 if (sharedStringsEntryName != null)
                 {
                     var sharedStringsEntry = archive.GetEntry(Extensions.NormPath(Path.Combine(relativePath, sharedStringsEntryName)));
@@ -150,8 +160,19 @@ namespace SheetReader
                     {
                         using var sharedStringsStream = sharedStringsEntry.Open();
                         var sharedStringsDoc = XDocument.Load(sharedStringsStream);
-                        foreach (var stringElement in sharedStringsDoc.XPathSelectElements("main:sst/main:si/main:t", XmlNamespaceManager))
+                        string xpath;
+                        if (IsOpenXml(sharedStringsDoc.Root))
                         {
+                            xpath = "oxmain:sst/oxmain:si";
+                        }
+                        else
+                        {
+                            xpath = "main:sst/main:si";
+                        }
+
+                        foreach (var stringElement in sharedStringsDoc.XPathSelectElements(xpath, XmlNamespaceManager))
+                        {
+                            // value will get all text beneath, including rtf
                             sharedStrings.Add(stringElement.Value);
                         }
                     }
@@ -159,7 +180,7 @@ namespace SheetReader
                 SharedStrings = sharedStrings.AsReadOnly();
 
                 var formats = new Dictionary<int, XlsxFormat>();
-                var stylesEntryName = GetTarget(relsDocument, _styles, null);
+                var stylesEntryName = GetTarget(relsDocument, null, _styles, _oxStyles);
                 if (stylesEntryName != null)
                 {
                     var stylesEntry = archive.GetEntry(Extensions.NormPath(Path.Combine(relativePath, stylesEntryName)));
@@ -167,7 +188,17 @@ namespace SheetReader
                     {
                         using var stylesStream = stylesEntry.Open();
                         var stylesDoc = XDocument.Load(stylesStream);
-                        foreach (var formatElement in stylesDoc.XPathSelectElements("main:styleSheet/main:cellXfs/main:xf", XmlNamespaceManager))
+                        string xpath;
+                        if (IsOpenXml(stylesDoc.Root))
+                        {
+                            xpath = "oxmain:styleSheet/oxmain:cellXfs/oxmain:xf";
+                        }
+                        else
+                        {
+                            xpath = "main:styleSheet/main:cellXfs/main:xf";
+                        }
+
+                        foreach (var formatElement in stylesDoc.XPathSelectElements(xpath, XmlNamespaceManager))
                         {
                             var xformat = new XlsxFormat(this, formatElement);
                             formats[formats.Count] = xformat;
@@ -184,26 +215,52 @@ namespace SheetReader
             public IReadOnlyList<string> SharedStrings { get; }
             public IReadOnlyDictionary<int, XlsxFormat> Formats { get; }
 
-            internal static string? GetTarget(XNode node, string type, string? id)
+            internal static bool IsMainNamespace(string ns) => ns == _main || ns == _oxMain;
+            internal static bool IsOpenXml(XElement? element) => element?.Name.Namespace.NamespaceName == _oxMain;
+            internal static string? GetTarget(XNode node, string? id, params string[] types)
             {
                 if (id == null)
-                    return node.XPathEvaluate($"string(rels:Relationships/rels:Relationship[@Type='{type}']/@Target)", XmlNamespaceManager) as string;
+                {
+                    foreach (var type in types)
+                    {
+                        var target = node.XPathEvaluate($"string(rels:Relationships/rels:Relationship[@Type='{type}']/@Target)", XmlNamespaceManager) as string;
+                        if (!string.IsNullOrEmpty(target))
+                            return target;
+                    }
+                }
 
-                return node.XPathEvaluate($"string(rels:Relationships/rels:Relationship[@Type='{type}' and @Id='{id}']/@Target)", XmlNamespaceManager) as string;
+                foreach (var type in types)
+                {
+                    var target = node.XPathEvaluate($"string(rels:Relationships/rels:Relationship[@Type='{type}' and @Id='{id}']/@Target)", XmlNamespaceManager) as string;
+                    if (!string.IsNullOrEmpty(target))
+                        return target;
+                }
+                return null;
             }
 
             public virtual IEnumerable<XlsxSheet> EnumerateSheets()
             {
-                foreach (var sheetElement in WorkbookDocument.XPathSelectElements("main:workbook/main:sheets/main:sheet", XmlNamespaceManager))
+                string xpath;
+                var openXml = IsOpenXml(WorkbookDocument.Root);
+                if (openXml)
+                {
+                    xpath = "oxmain:workbook/oxmain:sheets/oxmain:sheet";
+                }
+                else
+                {
+                    xpath = "main:workbook/main:sheets/main:sheet";
+                }
+
+                foreach (var sheetElement in WorkbookDocument.XPathSelectElements(xpath, XmlNamespaceManager))
                 {
                     if (sheetElement == null)
                         continue;
 
-                    var id = sheetElement.Attribute(XName.Get("id", _r))?.Value;
+                    var id = sheetElement.Attribute(XName.Get("id", openXml ? _oxR : _r))?.Value;
                     if (id == null)
                         continue;
 
-                    var sheetEntryName = GetTarget(RelsDocument, _ws, id);
+                    var sheetEntryName = GetTarget(RelsDocument, id, _ws, _oxWs);
                     if (sheetEntryName == null)
                         continue;
 
@@ -310,17 +367,17 @@ namespace SheetReader
                     if (Reader.NodeType != XmlNodeType.Element)
                         continue;
 
-                    if (Reader.LocalName == "sheetData" && Reader.NamespaceURI == _main)
+                    if (Reader.LocalName == "sheetData" && XlsxBook.IsMainNamespace(Reader.NamespaceURI))
                     {
                         while (Reader.Read())
                         {
                             if (Reader.NodeType == XmlNodeType.EndElement)
                             {
-                                if (Reader.LocalName == "sheetData" && Reader.NamespaceURI == _main)
+                                if (Reader.LocalName == "sheetData" && XlsxBook.IsMainNamespace(Reader.NamespaceURI))
                                     yield break;
                             }
 
-                            if (Reader.LocalName == "row" && Reader.NamespaceURI == _main)
+                            if (Reader.LocalName == "row" && XlsxBook.IsMainNamespace(Reader.NamespaceURI))
                             {
                                 var r = Reader.GetAttribute("r");
                                 if (r == null || !int.TryParse(r, out var rowIndex) || rowIndex <= 0)
@@ -356,11 +413,11 @@ namespace SheetReader
                 {
                     if (Sheet.Reader.NodeType == XmlNodeType.EndElement)
                     {
-                        if (Sheet.Reader.LocalName == "row" && Sheet.Reader.NamespaceURI == _main)
+                        if (Sheet.Reader.LocalName == "row" && XlsxBook.IsMainNamespace(Sheet.Reader.NamespaceURI))
                             yield break;
                     }
 
-                    if (Sheet.Reader.LocalName == "c" && Sheet.Reader.NamespaceURI == _main)
+                    if (Sheet.Reader.LocalName == "c" && XlsxBook.IsMainNamespace(Sheet.Reader.NamespaceURI))
                     {
                         var cell = new XlsxCell(this);
                         yield return cell;
@@ -381,10 +438,6 @@ namespace SheetReader
                 var reference = reader.GetAttribute("r");
                 if (reference != null)
                 {
-                    if (reference == "AE15")
-                    {
-                    }
-
                     var index = 0;
                     foreach (var c in reference)
                     {
@@ -405,18 +458,21 @@ namespace SheetReader
                     }
                 }
 
-                while (reader.Read())
+                if (!reader.IsEmptyElement)
                 {
-                    if (reader.NodeType == XmlNodeType.EndElement)
+                    while (reader.Read())
                     {
-                        if (reader.LocalName == "c" && reader.NamespaceURI == _main)
-                            break;
-                    }
+                        if (reader.NodeType == XmlNodeType.EndElement)
+                        {
+                            if (reader.LocalName == "c" && XlsxBook.IsMainNamespace(reader.NamespaceURI))
+                                break;
+                        }
 
-                    if (reader.LocalName == "v" && reader.NamespaceURI == _main)
-                    {
-                        RawValue = reader.ReadElementContentAsString();
-                        break;
+                        if (reader.LocalName == "v" && XlsxBook.IsMainNamespace(reader.NamespaceURI))
+                        {
+                            RawValue = reader.ReadElementContentAsString();
+                            break;
+                        }
                     }
                 }
 

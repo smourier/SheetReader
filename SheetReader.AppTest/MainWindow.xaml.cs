@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.ObjectModel;
+using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Windows;
@@ -42,29 +43,42 @@ namespace SheetReader.AppTest
             if (ofd.ShowDialog() != true)
                 return;
 
+            Load(ofd.FileName);
+        }
+
+        private void Load(string fileName)
+        {
             Sheets.Clear();
             var book = new Book();
-            foreach (var sheet in book.EnumerateSheets(ofd.FileName))
+            try
             {
-                // we need to load data for WPF data binding
-                var sheetData = new SheetData { Name = sheet.Name, IsHidden = !sheet.IsVisible };
-                foreach (var row in sheet.EnumerateRows())
+                foreach (var sheet in book.EnumerateSheets(fileName))
                 {
-                    var rowData = new RowData(row.Index, row.EnumerateCells().ToList());
-                    sheetData.Rows.Add(rowData);
-                }
+                    // we need to load data for WPF data binding
+                    var sheetData = new SheetData { Name = sheet.Name, IsHidden = !sheet.IsVisible };
+                    foreach (var row in sheet.EnumerateRows())
+                    {
+                        var rowData = new RowData(row.Index, row.EnumerateCells().ToList());
+                        sheetData.Rows.Add(rowData);
+                    }
 
-                sheetData.Columns = sheet.EnumerateColumns().ToList();
-                if (sheetData.Columns.Count > 0)
-                {
-                    sheetData.LastColumnIndex = sheetData.Columns.Max(x => x.Index);
-                }
+                    sheetData.Columns = sheet.EnumerateColumns().ToList();
+                    if (sheetData.Columns.Count > 0)
+                    {
+                        sheetData.LastColumnIndex = sheetData.Columns.Max(x => x.Index);
+                    }
 
-                if (sheetData.Rows.Count > 0)
-                {
-                    sheetData.LastRowIndex = sheetData.Rows.Max(x => x.RowIndex);
+                    if (sheetData.Rows.Count > 0)
+                    {
+                        sheetData.LastRowIndex = sheetData.Rows.Max(x => x.RowIndex);
+                    }
+                    Sheets.Add(sheetData);
                 }
-                Sheets.Add(sheetData);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(ex.GetAllMessagesWithDots(), "Error");
+                return;
             }
 
             // not sure why, but with only 1 tab, binding doesn't work...
@@ -73,6 +87,20 @@ namespace SheetReader.AppTest
                 var dummy = new SheetData();
                 Sheets.Add(dummy);
                 Sheets.Remove(dummy);
+            }
+            Title = "Sheet Reader - " + Path.GetFileName(fileName);
+        }
+
+        private void Grid_Drop(object sender, DragEventArgs e)
+        {
+            if (e.Data.GetDataPresent(DataFormats.FileDrop))
+            {
+                var files = (string[])e.Data.GetData(DataFormats.FileDrop);
+                var file = files?.FirstOrDefault(f => Book.IsSupportedFileExtension(Path.GetExtension(f)));
+                if (file != null)
+                {
+                    Load(file);
+                }
             }
         }
     }

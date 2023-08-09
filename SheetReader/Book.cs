@@ -1,12 +1,40 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
+using System.IO.Compression;
+using System.Xml;
+using System.Xml.Linq;
+using System.Xml.XPath;
 using SheetReader.Utilities;
+using Extensions = SheetReader.Utilities.Extensions;
 
 namespace SheetReader
 {
     public class Book
     {
+        protected static XmlNamespaceManager XmlNamespaceManager { get; } = BuildMgr();
+        private const string _relOfficeUri = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument";
+        private const string _rels = "http://schemas.openxmlformats.org/package/2006/relationships";
+        private const string _r = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+        private const string _ws = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet";
+        private const string _main = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
+        private const string _ss = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/sharedStrings";
+        private const string _styles = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles";
+
+        private static XmlNamespaceManager BuildMgr()
+        {
+            var mgr = new XmlNamespaceManager(new NameTable());
+            mgr.AddNamespace("rdoc", _relOfficeUri);
+            mgr.AddNamespace("rels", _rels);
+            mgr.AddNamespace("r", _r);
+            mgr.AddNamespace("ws", _ws);
+            mgr.AddNamespace("ss", _ss);
+            mgr.AddNamespace("styles", _styles);
+            mgr.AddNamespace("main", _main);
+            return mgr;
+        }
+
         public virtual IEnumerable<Sheet> EnumerateSheets(string filePath, BookFormat? format = null)
         {
             ArgumentNullException.ThrowIfNull(filePath);
@@ -63,7 +91,345 @@ namespace SheetReader
         {
             ArgumentNullException.ThrowIfNull(stream);
             ArgumentNullException.ThrowIfNull(format);
-            yield break;
+            using var archive = new ZipArchive(stream, ZipArchiveMode.Read, !format.IsStreamOwned);
+            var relsEntry = archive.GetEntry("_rels/.rels");
+            if (relsEntry == null)
+                yield break;
+
+            using var relsStream = relsEntry.Open();
+            var relsDoc = XDocument.Load(relsStream);
+            var workbookEntryName = XlsxBook.GetTarget(relsDoc, _relOfficeUri, null);
+            if (workbookEntryName == null)
+                yield break;
+
+            var workbookEntry = archive.GetEntry(workbookEntryName);
+            if (workbookEntry == null)
+                yield break;
+
+            var relPath = Path.GetDirectoryName(workbookEntryName);
+            if (relPath == null)
+                yield break;
+
+            var workbookRelsEntryName = Extensions.NormPath(Path.Combine(relPath, "_rels", Path.GetFileName(workbookEntryName) + ".rels"));
+            var workbookRelsEntry = archive.GetEntry(workbookRelsEntryName);
+            if (workbookRelsEntry == null)
+                yield break;
+
+            using var workbookStream = workbookEntry.Open();
+            var workBookDoc = XDocument.Load(workbookStream);
+            using var workbookRelsStream = workbookRelsEntry.Open();
+            var workBookRelsDoc = XDocument.Load(workbookRelsStream);
+
+            var wb = new XlsxBook(archive, relPath, workBookDoc, workBookRelsDoc);
+            foreach (var sheet in wb.EnumerateSheets())
+            {
+                yield return sheet;
+            }
+        }
+
+        protected class XlsxBook
+        {
+            public XlsxBook(ZipArchive archive, string relativePath, XDocument workbookDocument, XDocument relsDocument)
+            {
+                ArgumentNullException.ThrowIfNull(archive);
+                ArgumentNullException.ThrowIfNull(relativePath);
+                ArgumentNullException.ThrowIfNull(workbookDocument);
+                ArgumentNullException.ThrowIfNull(relsDocument);
+                Archive = archive;
+                RelativePath = relativePath;
+                WorkbookDocument = workbookDocument;
+                RelsDocument = relsDocument;
+
+                var sharedStrings = new List<string>();
+                var sharedStringsEntryName = GetTarget(relsDocument, _ss, null);
+                if (sharedStringsEntryName != null)
+                {
+                    var sharedStringsEntry = archive.GetEntry(Extensions.NormPath(Path.Combine(relativePath, sharedStringsEntryName)));
+                    if (sharedStringsEntry != null)
+                    {
+                        using var sharedStringsStream = sharedStringsEntry.Open();
+                        var sharedStringsDoc = XDocument.Load(sharedStringsStream);
+                        foreach (var stringElement in sharedStringsDoc.XPathSelectElements("main:sst/main:si/main:t", XmlNamespaceManager))
+                        {
+                            sharedStrings.Add(stringElement.Value);
+                        }
+                    }
+                }
+                SharedStrings = sharedStrings.AsReadOnly();
+
+                var formats = new Dictionary<int, XlsxFormat>();
+                var stylesEntryName = GetTarget(relsDocument, _styles, null);
+                if (stylesEntryName != null)
+                {
+                    var stylesEntry = archive.GetEntry(Extensions.NormPath(Path.Combine(relativePath, stylesEntryName)));
+                    if (stylesEntry != null)
+                    {
+                        using var stylesStream = stylesEntry.Open();
+                        var stylesDoc = XDocument.Load(stylesStream);
+                        foreach (var formatElement in stylesDoc.XPathSelectElements("main:styleSheet/main:cellXfs/main:xf", XmlNamespaceManager))
+                        {
+                            var xformat = new XlsxFormat(this, formatElement);
+                            formats[formats.Count] = xformat;
+                        }
+                    }
+                }
+                Formats = formats.AsReadOnly();
+            }
+
+            public ZipArchive Archive { get; }
+            public string RelativePath { get; }
+            public XDocument WorkbookDocument { get; }
+            public XDocument RelsDocument { get; }
+            public IReadOnlyList<string> SharedStrings { get; }
+            public IReadOnlyDictionary<int, XlsxFormat> Formats { get; }
+
+            internal static string? GetTarget(XNode node, string type, string? id)
+            {
+                if (id == null)
+                    return node.XPathEvaluate($"string(rels:Relationships/rels:Relationship[@Type='{type}']/@Target)", XmlNamespaceManager) as string;
+
+                return node.XPathEvaluate($"string(rels:Relationships/rels:Relationship[@Type='{type}' and @Id='{id}']/@Target)", XmlNamespaceManager) as string;
+            }
+
+            public virtual IEnumerable<XlsxSheet> EnumerateSheets()
+            {
+                foreach (var sheetElement in WorkbookDocument.XPathSelectElements("main:workbook/main:sheets/main:sheet", XmlNamespaceManager))
+                {
+                    if (sheetElement == null)
+                        continue;
+
+                    var id = sheetElement.Attribute(XName.Get("id", _r))?.Value;
+                    if (id == null)
+                        continue;
+
+                    var sheetEntryName = GetTarget(RelsDocument, _ws, id);
+                    if (sheetEntryName == null)
+                        continue;
+
+                    sheetEntryName = Extensions.NormPath(Path.Combine(RelativePath, sheetEntryName));
+                    var sheetEntry = Archive.GetEntry(sheetEntryName);
+                    if (sheetEntry == null)
+                        continue;
+
+                    using var sheetStream = sheetEntry.Open();
+                    using var reader = XmlReader.Create(sheetStream);
+                    var sheet = new XlsxSheet(this, sheetElement, reader);
+                    yield return sheet;
+                }
+            }
+        }
+
+        protected class XlsxFormat
+        {
+            public XlsxFormat(XlsxBook book, XElement element)
+            {
+                ArgumentNullException.ThrowIfNull(book);
+                ArgumentNullException.ThrowIfNull(element);
+                Book = book;
+                var id = element.Attribute("numFmtId")?.Value;
+                if (id != null && int.TryParse(id, out var i) && i >= 0)
+                {
+                    FormatId = i;
+                }
+            }
+
+            public XlsxBook Book { get; }
+            public int FormatId { get; }
+
+            public virtual bool TryParseValue(string rawWalue, out object? value)
+            {
+                value = null;
+                if (rawWalue == null)
+                    return false;
+
+                // https://github.com/closedxml/closedxml/wiki/NumberFormatId-Lookup-Table
+                switch (FormatId)
+                {
+                    case 14:
+                    case 15:
+                    case 16:
+                    case 17:
+                    case 22:
+                        if (double.TryParse(rawWalue, CultureInfo.InvariantCulture, out var dbl))
+                        {
+                            try
+                            {
+                                value = DateTime.FromOADate(dbl);
+                                return true;
+                            }
+                            catch
+                            {
+                                // continue;
+                            }
+                        }
+                        break;
+                }
+
+                return false;
+            }
+        }
+
+        protected class XlsxSheet : Sheet
+        {
+            public XlsxSheet(XlsxBook book, XElement element, XmlReader reader)
+            {
+                ArgumentNullException.ThrowIfNull(book);
+                ArgumentNullException.ThrowIfNull(element);
+                ArgumentNullException.ThrowIfNull(reader);
+                Book = book;
+                Element = element;
+                Reader = reader;
+                Name = element.Attribute("name")?.Value;
+                var state = element.Attribute("state")?.Value;
+                if (state.EqualsIgnoreCase("hidden"))
+                {
+                    IsVisible = false;
+                }
+            }
+
+            public XlsxBook Book { get; }
+            public XElement Element { get; }
+            public XmlReader Reader { get; }
+
+            public override IEnumerable<Column> EnumerateColumns()
+            {
+                yield break;
+            }
+
+            public override IEnumerable<Row> EnumerateRows()
+            {
+                while (Reader.Read())
+                {
+                    if (Reader.NodeType != XmlNodeType.Element)
+                        continue;
+
+                    if (Reader.LocalName == "sheetData" && Reader.NamespaceURI == _main)
+                    {
+                        while (Reader.Read())
+                        {
+                            if (Reader.NodeType == XmlNodeType.EndElement)
+                            {
+                                if (Reader.LocalName == "sheetData" && Reader.NamespaceURI == _main)
+                                    yield break;
+                            }
+
+                            if (Reader.LocalName == "row" && Reader.NamespaceURI == _main)
+                            {
+                                var r = Reader.GetAttribute("r");
+                                if (r == null || !int.TryParse(r, out var rowIndex) || rowIndex <= 0)
+                                    continue;
+
+                                var row = new XlsxRow(this) { Index = rowIndex - 1 };
+                                var hidden = Reader.GetAttribute("hidden");
+                                if (hidden != null && hidden.EqualsIgnoreCase("true") || hidden == "1")
+                                {
+                                    row.IsVisible = false;
+                                }
+                                yield return row;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        protected class XlsxRow : Row
+        {
+            public XlsxRow(XlsxSheet sheet)
+            {
+                ArgumentNullException.ThrowIfNull(sheet);
+                Sheet = sheet;
+            }
+
+            public XlsxSheet Sheet { get; }
+
+            public override IEnumerable<Cell> EnumerateCells()
+            {
+                while (Sheet.Reader.Read())
+                {
+                    if (Sheet.Reader.NodeType == XmlNodeType.EndElement)
+                    {
+                        if (Sheet.Reader.LocalName == "row" && Sheet.Reader.NamespaceURI == _main)
+                            yield break;
+                    }
+
+                    if (Sheet.Reader.LocalName == "c" && Sheet.Reader.NamespaceURI == _main)
+                    {
+                        var r = Sheet.Reader.GetAttribute("r");
+                        var cell = new XlsxCell(this);
+                        yield return cell;
+                    }
+                }
+            }
+        }
+
+        protected class XlsxCell : Cell
+        {
+            public XlsxCell(XlsxRow row)
+            {
+                ArgumentNullException.ThrowIfNull(row);
+                Row = row;
+                var reader = Row.Sheet.Reader;
+                var type = reader.GetAttribute("t");
+                var format = reader.GetAttribute("s");
+
+                while (reader.Read())
+                {
+                    if (reader.NodeType == XmlNodeType.EndElement)
+                    {
+                        if (reader.LocalName == "c" && reader.NamespaceURI == _main)
+                            break;
+                    }
+
+                    if (reader.LocalName == "v" && reader.NamespaceURI == _main)
+                    {
+                        RawValue = reader.ReadElementContentAsString();
+                        break;
+                    }
+                }
+
+                switch (type)
+                {
+                    case "e":
+                        IsError = true;
+                        break;
+
+                    case "s":
+                        if (int.TryParse(RawValue, out var i) && i >= 0 && i < Row.Sheet.Book.SharedStrings.Count)
+                        {
+                            Value = Row.Sheet.Book.SharedStrings[i];
+                        }
+                        break;
+
+                    case "d":
+                        if (RawValue != null && DateTime.TryParseExact(RawValue, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.AllowLeadingWhite | DateTimeStyles.AllowTrailingWhite, out var dt))
+                        {
+                            Value = dt;
+                        }
+                        break;
+
+                    case "b":
+                        Value = RawValue == "1";
+                        break;
+                }
+
+                if (Value == null && RawValue != null)
+                {
+                    if (format != null &&
+                        int.TryParse(format, out var fmtId) &&
+                        Row.Sheet.Book.Formats.TryGetValue(fmtId, out var xformat) &&
+                        xformat.TryParseValue(RawValue, out var formatted))
+                    {
+                        Value = formatted;
+                    }
+                    else
+                    {
+                        Value = RawValue;
+                    }
+                }
+            }
+
+            public XlsxRow Row { get; }
         }
 
         protected class CsvRow : Row
@@ -80,7 +446,7 @@ namespace SheetReader
             {
                 while (Cells.MoveNext())
                 {
-                    yield return new Cell { Value = Cells.Current };
+                    yield return new Cell { Value = Cells.Current, RawValue = Cells.Current };
                 }
             }
         }

@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
+using System.IO;
 using System.Linq;
 using System.Reflection;
 
@@ -131,5 +132,9 @@ namespace SheetReader.Utilities
             var t = text.Trim();
             return t.Length == 0 ? null : t;
         }
+
+        [return: NotNullIfNotNull(nameof(path))]
+        public static string? NormPath(string path) => path?.Replace(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+
     }
 }

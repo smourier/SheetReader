@@ -44,28 +44,13 @@ namespace SheetReader
             return mgr;
         }
 
-        public static bool IsSupportedFileExtension(string extension) => extension.EqualsIgnoreCase(".xlsx") || extension.EqualsIgnoreCase(".csv");
+        public static bool IsSupportedFileExtension(string extension) => BookFormat.GetFromFileExtension(extension) != null;
 
         public virtual IEnumerable<Sheet> EnumerateSheets(string filePath, BookFormat? format = null)
         {
             ArgumentNullException.ThrowIfNull(filePath);
-
-            if (format == null)
-            {
-                var ext = Path.GetExtension(filePath);
-                if (ext.EqualsIgnoreCase(".csv"))
-                {
-                    format = new CsvBookFormat();
-                }
-                else if (ext.EqualsIgnoreCase(".xlsx"))
-                {
-                    format = new XlsxBookFormat();
-                }
-                else
-                {
-                    ArgumentNullException.ThrowIfNull(format);
-                }
-            }
+            format ??= BookFormat.GetFromFileExtension(Path.GetExtension(filePath));
+            ArgumentNullException.ThrowIfNull(format);
 
             var stream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
             format.IsStreamOwned = true;

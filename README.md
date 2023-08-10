@@ -25,5 +25,5 @@ Example:
     Console.WriteLine("Visible rows:" + visibleRows);
     Console.WriteLine("Invisible rows:" + invisibleRows);
 
-The code is also available as a single .cs file: [SheetReader.cs]: Amalgamation\SheetReader.cs
+The code is also available as a single .cs file: [SheetReader.cs](Amalgamation/SheetReader.cs)
 

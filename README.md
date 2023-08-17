@@ -20,7 +20,6 @@ Example:
             visibleRows++;
             Console.WriteLine(string.Join("\t", row.EnumerateCells()));
         }
-        break;
     }
     Console.WriteLine("Visible rows:" + visibleRows);
     Console.WriteLine("Invisible rows:" + invisibleRows);

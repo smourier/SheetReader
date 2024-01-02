@@ -11,7 +11,7 @@ using System.Runtime.InteropServices;
 [assembly: AssemblyDescription("Sheet Reader")]
 [assembly: AssemblyCompany("Simon Mourier")]
 [assembly: AssemblyProduct("Sheet Reader")]
-[assembly: AssemblyCopyright("Copyright (C) 2021-2023 Simon Mourier. All rights reserved.")]
+[assembly: AssemblyCopyright("Copyright (C) 2021-2024 Simon Mourier. All rights reserved.")]
 [assembly: AssemblyCulture("")]
 [assembly: ComVisible(false)]
 [assembly: Guid("f602601a-5246-4783-a83b-2acd7b5ace00")]

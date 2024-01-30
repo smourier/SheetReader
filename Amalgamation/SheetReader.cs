@@ -1,7 +1,7 @@
 ﻿/*
 MIT License
 
-Copyright (c) 2023 Simon Mourier
+Copyright (c) 2023-2024 Simon Mourier
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -33,7 +33,6 @@ using SheetReader.Utilities;
 using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.IO.Compression;
-using System.Runtime.Serialization;
 using System.Text;
 using System.Xml.Linq;
 using System.Xml.XPath;
@@ -1021,11 +1020,6 @@ namespace SheetReader
 
         public SheetReaderException(string message, Exception innerException)
             : base(Prefix + ":" + message, innerException)
-        {
-        }
-
-        protected SheetReaderException(SerializationInfo info, StreamingContext context)
-            : base(info, context)
         {
         }
 

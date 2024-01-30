@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Globalization;
-using System.Runtime.Serialization;
 
 namespace SheetReader
 {
@@ -26,11 +25,6 @@ namespace SheetReader
 
         public SheetReaderException(string message, Exception innerException)
             : base(Prefix + ":" + message, innerException)
-        {
-        }
-
-        protected SheetReaderException(SerializationInfo info, StreamingContext context)
-            : base(info, context)
         {
         }
 

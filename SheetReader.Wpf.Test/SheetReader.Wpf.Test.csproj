@@ -6,10 +6,15 @@
 		<Nullable>enable</Nullable>
 		<GenerateAssemblyInfo>false</GenerateAssemblyInfo>
 		<UseWPF>true</UseWPF>
+		<ApplicationIcon>SheetReader.ico</ApplicationIcon>
 	</PropertyGroup>
 
 	<ItemGroup>
 	  <Compile Include="..\SheetReader\Properties\AssemblyVersionInfo.cs" Link="Properties\AssemblyVersionInfo.cs" />
+	</ItemGroup>
+
+	<ItemGroup>
+	  <Content Include="SheetReader.ico" />
 	</ItemGroup>
 
 	<ItemGroup>

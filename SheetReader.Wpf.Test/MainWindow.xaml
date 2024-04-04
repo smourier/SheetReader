@@ -1,0 +1,65 @@
+﻿<Window
+    x:Class="SheetReader.Wpf.Test.MainWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:smx="http://schemas.simonmourier.com/xaml/sheetreader"
+    Title="Sheet Reader"
+    Width="1400"
+    Height="1000"
+    WindowStartupLocation="CenterScreen"
+    mc:Ignorable="d">
+    <Grid AllowDrop="True" Drop="Grid_Drop">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+        <Menu Name="MainMenu" IsMainMenu="True">
+            <MenuItem
+                Height="24"
+                Header="_File"
+                SubmenuOpened="OnFileOpened">
+                <MenuItem
+                    Name="MenuOpen"
+                    Click="Open_Click"
+                    Header="_Open"
+                    InputGestureText="Ctrl+O" />
+                <MenuItem
+                    x:Name="RecentFilesMenuItem"
+                    Header="Open _Recent"
+                    IsEnabled="False">
+                    <Separator />
+                    <MenuItem Name="ClearRecentFiles" Header="Clear Recent List" Click="ClearRecentFiles_Click" />
+                </MenuItem>
+                <Separator />
+                <MenuItem
+                    Name="MenuExit"
+                    Click="Exit_Click"
+                    Header="E_xit"
+                    InputGestureText="Alt+F4" />
+            </MenuItem>
+            <MenuItem Header="_Help">
+                <MenuItem Click="About_Click" Header="About..." />
+            </MenuItem>
+        </Menu>
+        <TabControl x:Name="tc" Grid.Row="1">
+            <TabControl.ItemTemplate>
+                <DataTemplate>
+                    <DockPanel>
+                        <TextBlock Text="{Binding Name}" />
+                        <TextBlock
+                            Padding="10,0,0,0"
+                            Text="(Hidden)"
+                            Visibility="{Binding IsHidden, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                    </DockPanel>
+                </DataTemplate>
+            </TabControl.ItemTemplate>
+            <TabControl.ContentTemplate>
+                <DataTemplate>
+                    <smx:SheetControl Sheet="{Binding}" />
+                </DataTemplate>
+            </TabControl.ContentTemplate>
+        </TabControl>
+    </Grid>
+</Window>

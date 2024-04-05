@@ -42,7 +42,7 @@ namespace SheetReader.Wpf.Test
 
         private void OpenWithExcel_Click(object sender, RoutedEventArgs e) => OpenWithExcel();
         private void ClearRecentFiles_Click(object sender, RoutedEventArgs e) => Settings.Current.ClearRecentFiles();
-        private void Exit_Click(object sender, RoutedEventArgs e) => CloseDocument();
+        private void Exit_Click(object sender, RoutedEventArgs e) => Close();
         private void About_Click(object sender, RoutedEventArgs e) => MessageBox.Show(Assembly.GetEntryAssembly()!.GetCustomAttribute<AssemblyTitleAttribute>()!.Title + " - " + (IntPtr.Size == 4 ? "32" : "64") + "-bit" + Environment.NewLine + "Copyright (C) 2021-" + DateTime.Now.Year + " Simon Mourier. All rights reserved.", Assembly.GetEntryAssembly()!.GetCustomAttribute<AssemblyTitleAttribute>()!.Title, MessageBoxButton.OK, MessageBoxImage.Information);
         private void Open_Click(object sender, RoutedEventArgs e)
         {
@@ -91,16 +91,16 @@ namespace SheetReader.Wpf.Test
             RecentFilesMenuItem.IsEnabled = RecentFilesMenuItem.Items.Count > fixedRecentItemsCount;
         }
 
-        private void CloseDocument() => LoadDocument(null);
-        private void LoadDocument(string? fileName)
+        private void LoadDocument(string? filePath)
         {
             Sheets.Clear();
-            if (fileName != null)
+            if (filePath != null)
             {
                 try
                 {
+                    var format = BookFormat.GetFromFileExtension(Path.GetExtension(filePath)) ?? new CsvBookFormat();
                     var book = new BookDocument();
-                    book.Load(fileName);
+                    book.Load(filePath, format);
                     foreach (var sheet in book.Sheets)
                     {
                         Sheets.Add(sheet);
@@ -120,9 +120,9 @@ namespace SheetReader.Wpf.Test
                     Sheets.RemoveAt(1);
                 }
 
-                Title = "Sheet Reader - " + Path.GetFileName(fileName);
-                FileName = fileName;
-                Settings.Current.AddRecentFile(fileName);
+                Title = "Sheet Reader - " + Path.GetFileName(filePath);
+                FileName = filePath;
+                Settings.Current.AddRecentFile(filePath);
             }
             else
             {

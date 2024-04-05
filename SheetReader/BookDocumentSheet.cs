@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 
 namespace SheetReader
 {
@@ -53,5 +54,20 @@ namespace SheetReader
         public IReadOnlyDictionary<int, Column> Columns => _columns;
 
         public override string ToString() => Name;
+
+        public Cell? GetCell(RowCol rowCol)
+        {
+            ArgumentNullException.ThrowIfNull(rowCol);
+            return GetCell(rowCol.RowIndex, rowCol.ColumnIndex);
+        }
+
+        public Cell? GetCell(int rowIndex, int columnIndex)
+        {
+            if (!_rows.TryGetValue(rowIndex, out var row))
+                return null;
+
+            row.Cells.TryGetValue(columnIndex, out var cell);
+            return cell;
+        }
     }
 }

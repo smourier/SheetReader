@@ -26,3 +26,4 @@ Example:
 
 The code is also available as a single .cs file: [SheetReader.cs](Amalgamation/SheetReader.cs)
 
+There's also a sample WPF control that allows to see what's been read by the **SheetReader**:

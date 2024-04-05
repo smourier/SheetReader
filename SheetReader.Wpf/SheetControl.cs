@@ -1,9 +1,10 @@
 ﻿using System;
-using System.Diagnostics;
 using System.Globalization;
+using System.Runtime.CompilerServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using SheetReader.Wpf.Utilities;
 
 namespace SheetReader.Wpf
 {
@@ -46,6 +47,8 @@ namespace SheetReader.Wpf
             DefaultStyleKeyProperty.OverrideMetadata(typeof(SheetControl), new FrameworkPropertyMetadata(typeof(SheetControl)));
         }
 
+        private static void Log(object? message = null, [CallerMemberName] string? methodName = null) => EventProvider.Default.WriteMessageEvent(methodName + ":" + message);
+
         private ScrollViewer? _scrollViewer;
         private SheetGrid? _grid;
 
@@ -68,7 +71,6 @@ namespace SheetReader.Wpf
 
         private void OnScrollChanged(object sender, ScrollChangedEventArgs e)
         {
-            Trace.WriteLine("OnScrollChanged");
             _grid?.InvalidateVisual();
         }
 
@@ -100,7 +102,6 @@ namespace SheetReader.Wpf
 
             protected override void OnRender(DrawingContext drawingContext)
             {
-                Trace.WriteLine("OnRender size:" + RenderSize);
                 if (control.Sheet == null || control.Sheet.Columns.Count == 0 || control.Sheet.Rows.Count == 0)
                     return;
 
@@ -109,20 +110,33 @@ namespace SheetReader.Wpf
 
                 var dpi = VisualTreeHelper.GetDpi(this);
                 var colWidth = control.GetColWidth();
+                var colFullWidth = colWidth + control.GridLineSize;
                 var rowHeight = control.GetRowHeight();
-                var fontSize = rowHeight * 0.6;
+                var rowFullHeight = rowHeight + control.GridLineSize;
 
-                var rowMargin = control.GetRowMargin();
-                var headerHeight = rowHeight;
+                var rowsHeaderWidth = control.GetRowMargin();
+                var rowsHeaderFullWidth = rowsHeaderWidth + control.GridLineSize;
+                var columnsHeaderHeight = rowHeight;
+                var columnsHeaderFullHeight = columnsHeaderHeight + control.GridLineSize;
 
-                var firstColumnIndex = 0;
-                var offsetX = control._scrollViewer?.ContentHorizontalOffset ?? 0;
+                var offsetX = control._scrollViewer?.HorizontalOffset ?? 0;
+                var offsetY = control._scrollViewer?.VerticalOffset ?? 0;
+                var viewWidth = control._scrollViewer?.ViewportWidth ?? RenderSize.Width;
+                var viewHeight = control._scrollViewer?.ViewportHeight ?? RenderSize.Height;
+
+                var firstDrawnColumnIndex = Math.Max((int)((offsetX - rowsHeaderFullWidth) / colFullWidth), 0);
+                var lastDrawnColumnIndex = Math.Max(Math.Min((int)((offsetX - rowsHeaderFullWidth + viewWidth) / colFullWidth), control.Sheet.LastColumnIndex), firstDrawnColumnIndex);
+
+                var firstDrawnRowIndex = Math.Max((int)((offsetY - columnsHeaderFullHeight) / rowFullHeight), 0);
+                var lastDrawnRowIndex = Math.Max(Math.Min((int)((offsetY - columnsHeaderFullHeight + viewHeight) / rowFullHeight), control.Sheet.LastRowIndex), firstDrawnRowIndex);
+
+                Log("firstCol:" + firstDrawnColumnIndex + " lastCol:" + lastDrawnColumnIndex + " firstRow:" + firstDrawnRowIndex + " lastRow:" + lastDrawnRowIndex);
 
                 // header backgrounds
-                drawingContext.DrawRectangle(Brushes.LightGray, null, new Rect(offsetX, headerHeight, rowMargin + offsetX, (control.Sheet.LastRowIndex + 1) * rowHeight));
-                drawingContext.DrawRectangle(Brushes.LightGray, null, new Rect(rowMargin, 0, (control.Sheet.LastColumnIndex + 1) * colWidth, headerHeight));
+                drawingContext.DrawRectangle(Brushes.LightGray, null, new Rect(offsetX, columnsHeaderHeight, rowsHeaderWidth, (control.Sheet.LastRowIndex + 1) * rowHeight));
+                drawingContext.DrawRectangle(Brushes.LightGray, null, new Rect(rowsHeaderWidth, offsetY, (control.Sheet.LastColumnIndex + 1) * colWidth, columnsHeaderHeight));
 
-                var maxWidth = Math.Min(colWidth * (control.Sheet.LastColumnIndex + 1) + rowMargin, RenderSize.Width);
+                var maxWidth = Math.Min(colWidth * (control.Sheet.LastColumnIndex + 1) + rowsHeaderWidth, RenderSize.Width);
                 var maxHeight = Math.Min(rowHeight * (control.Sheet.LastRowIndex + 2), RenderSize.Height);
 
                 // includes col header
@@ -135,24 +149,24 @@ namespace SheetReader.Wpf
                     }
                     else
                     {
-                        x = colWidth * i - (colWidth - rowMargin);
+                        x = colWidth * i - (colWidth - rowsHeaderWidth);
                     }
 
-                    drawingContext.DrawLine(pen, new Point(x, 0), new Point(x, maxHeight));
+                    drawingContext.DrawLine(pen, new Point(x, offsetY), new Point(x, maxHeight));
 
                     // draw col name
                     if (i < control.Sheet.LastColumnIndex + 1)
                     {
                         var name = GetExcelColumnName(i);
-                        var formatted = new FormattedText(name, CultureInfo.CurrentCulture, FlowDirection.LeftToRight, typeFace, fontSize, Brushes.Black, dpi.PixelsPerDip)
+                        var formatted = new FormattedText(name, CultureInfo.CurrentCulture, FlowDirection.LeftToRight, typeFace, control.FontSize, control.Foreground, dpi.PixelsPerDip)
                         {
-                            MaxTextWidth = rowMargin,
+                            MaxTextWidth = rowsHeaderWidth,
                             MaxLineCount = 1
                         };
 
                         var xoffset = (colWidth - formatted.Width) / 2; // center horizontally
-                        var yoffset = (headerHeight - formatted.Height) / 2; // center vertically
-                        drawingContext.DrawText(formatted, new Point(xoffset + rowMargin + i * colWidth + pen.Thickness, yoffset + pen.Thickness));
+                        var yoffset = offsetY + (columnsHeaderHeight - formatted.Height) / 2; // center vertically
+                        drawingContext.DrawText(formatted, new Point(xoffset + rowsHeaderWidth + i * colWidth + pen.Thickness, yoffset + pen.Thickness));
                     }
                 }
 
@@ -160,36 +174,41 @@ namespace SheetReader.Wpf
                 for (var i = 0; i < control.Sheet.LastRowIndex + 2 + 1; i++)
                 {
                     var y = rowHeight * i;
-                    drawingContext.DrawLine(pen, new Point(0, y), new Point(maxWidth, y));
+                    drawingContext.DrawLine(pen, new Point(offsetX, y), new Point(maxWidth, y));
 
                     // draw row #
                     if (i < control.Sheet.LastRowIndex + 1)
                     {
-                        var formatted = new FormattedText((i + 1).ToString(), CultureInfo.CurrentCulture, FlowDirection.LeftToRight, typeFace, fontSize, Brushes.Black, dpi.PixelsPerDip)
+                        var formatted = new FormattedText((i + 1).ToString(), CultureInfo.CurrentCulture, FlowDirection.LeftToRight, typeFace, control.FontSize, control.Foreground, dpi.PixelsPerDip)
                         {
-                            MaxTextWidth = rowMargin,
+                            MaxTextWidth = rowsHeaderWidth,
                             MaxLineCount = 1
                         };
 
-                        var xoffset = (rowMargin - formatted.Width) / 2; // center horizontally
+                        var xoffset = offsetX + (rowsHeaderWidth - formatted.Width) / 2; // center horizontally
                         var yoffset = (rowHeight - formatted.Height) / 2; // center vertically
-                        drawingContext.DrawText(formatted, new Point(xoffset + pen.Thickness, headerHeight + rowHeight * i + yoffset + pen.Thickness));
+                        drawingContext.DrawText(formatted, new Point(xoffset + pen.Thickness, columnsHeaderHeight + rowHeight * i + yoffset + pen.Thickness));
                     }
                 }
 
-                foreach (var row in control.Sheet.Rows)
+                for (var i = firstDrawnRowIndex; i <= lastDrawnRowIndex; i++)
                 {
-                    foreach (var cell in row.Cells)
+                    var row = control.Sheet.Rows[i];
+                    for (var j = firstDrawnColumnIndex; j <= lastDrawnColumnIndex; j++)
                     {
+                        if (j >= row.Cells.Count)
+                            continue;
+
+                        var cell = row.Cells[j];
                         var text = string.Format("{0}", cell.Value);
-                        var formatted = new FormattedText(text, CultureInfo.CurrentCulture, FlowDirection.LeftToRight, typeFace, fontSize, Brushes.Black, dpi.PixelsPerDip)
+                        var formatted = new FormattedText(text, CultureInfo.CurrentCulture, FlowDirection.LeftToRight, typeFace, control.FontSize, control.Foreground, dpi.PixelsPerDip)
                         {
                             MaxTextWidth = colWidth,
                             MaxLineCount = 1
                         };
 
-                        var y = headerHeight + rowHeight * row.RowIndex;
-                        var x = rowMargin + colWidth * cell.ColumnIndex;
+                        var y = columnsHeaderHeight + rowHeight * row.RowIndex;
+                        var x = rowsHeaderWidth + colWidth * cell.ColumnIndex;
                         var yoffset = (rowHeight - formatted.Height) / 2; // center vertically
                         drawingContext.DrawText(formatted, new Point(x + pen.Thickness, y + yoffset + pen.Thickness));
                     }

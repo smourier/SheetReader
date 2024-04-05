@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Globalization;
+using System.Linq;
 using System.Windows;
 using System.Windows.Media;
 
@@ -7,7 +8,7 @@ namespace SheetReader.AppTest
 {
     public class SheetControl : FrameworkElement
     {
-        public static readonly DependencyProperty SheetProperty = DependencyProperty.Register(nameof(Sheet), typeof(SheetData), typeof(SheetControl),
+        public static readonly DependencyProperty SheetProperty = DependencyProperty.Register(nameof(Sheet), typeof(BookDocumentSheet), typeof(SheetControl),
             new FrameworkPropertyMetadata(null, FrameworkPropertyMetadataOptions.AffectsMeasure | FrameworkPropertyMetadataOptions.AffectsRender));
 
         public static readonly DependencyProperty ColumnSizeProperty = DependencyProperty.Register(nameof(ColumnSize), typeof(double), typeof(SheetControl),
@@ -16,7 +17,7 @@ namespace SheetReader.AppTest
         public static readonly DependencyProperty RowHeightProperty = DependencyProperty.Register(nameof(RowHeight), typeof(double), typeof(SheetControl),
             new FrameworkPropertyMetadata(20.0, FrameworkPropertyMetadataOptions.AffectsMeasure | FrameworkPropertyMetadataOptions.AffectsRender));
 
-        public SheetData Sheet { get { return (SheetData)GetValue(SheetProperty); } set { SetValue(SheetProperty, value); } }
+        public BookDocumentSheet Sheet { get { return (BookDocumentSheet)GetValue(SheetProperty); } set { SetValue(SheetProperty, value); } }
         public double ColumnSize { get { return (double)GetValue(ColumnSizeProperty); } set { SetValue(ColumnSizeProperty, value); } }
         public double RowHeight { get { return (double)GetValue(RowHeightProperty); } set { SetValue(RowHeightProperty, value); } }
 
@@ -119,7 +120,7 @@ namespace SheetReader.AppTest
                 }
             }
 
-            foreach (var row in Sheet.Rows)
+            foreach (var row in Sheet.Rows.Values.OrderBy(r => r.RowIndex))
             {
                 foreach (var cell in row.Cells)
                 {

@@ -14,6 +14,8 @@
                         x:Name="PART_ScrollViewer"
                         Grid.Row="1"
                         Grid.Column="1"
+                        Background="{TemplateBinding Background}"
+                        Foreground="{TemplateBinding Foreground}"
                         HorizontalScrollBarVisibility="Auto"
                         VerticalScrollBarVisibility="Auto" />
                 </ControlTemplate>

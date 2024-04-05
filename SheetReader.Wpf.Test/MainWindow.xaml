@@ -30,7 +30,10 @@
                     Header="Open _Recent"
                     IsEnabled="False">
                     <Separator />
-                    <MenuItem Name="ClearRecentFiles" Header="Clear Recent List" Click="ClearRecentFiles_Click" />
+                    <MenuItem
+                        Name="ClearRecentFiles"
+                        Click="ClearRecentFiles_Click"
+                        Header="Clear Recent List" />
                 </MenuItem>
                 <Separator />
                 <MenuItem

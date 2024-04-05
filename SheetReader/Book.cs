@@ -330,7 +330,7 @@ namespace SheetReader
                 Book = book;
                 Element = element;
                 Reader = reader;
-                Name = element.Attribute("name")?.Value;
+                Name = element.Attribute("name")?.Value!;
                 var state = element.Attribute("state")?.Value;
                 if (state.EqualsIgnoreCase("hidden"))
                 {

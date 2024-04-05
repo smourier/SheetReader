@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Reflection;
@@ -132,6 +133,17 @@ namespace SheetReader.Wpf.Test.Utilities
 
             var t = text.Trim();
             return t.Length == 0 ? null : t;
+        }
+
+        public static void OpenFile(string fileName)
+        {
+            ArgumentNullException.ThrowIfNull(fileName);
+            var psi = new ProcessStartInfo
+            {
+                FileName = fileName,
+                UseShellExecute = true
+            };
+            Process.Start(psi);
         }
 
         public static void RaiseMenuItemClickOnKeyGesture(this ItemsControl control, KeyEventArgs args, bool throwOnError = true)

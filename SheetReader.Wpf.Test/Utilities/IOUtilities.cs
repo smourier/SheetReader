@@ -4,7 +4,7 @@ using System.Runtime.InteropServices;
 
 namespace SheetReader.Wpf.Test.Utilities
 {
-    public static class IOUtilities
+    internal static class IOUtilities
     {
         public static bool IsPathRooted(string path)
         {

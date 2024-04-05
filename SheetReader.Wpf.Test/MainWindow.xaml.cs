@@ -23,7 +23,7 @@ namespace SheetReader.Wpf.Test
         }
 
         public string? FileName { get; set; }
-        public ObservableCollection<SheetData> Sheets { get; } = [];
+        public ObservableCollection<BookDocumentSheet> Sheets { get; } = [];
 
         protected override void OnKeyDown(KeyEventArgs e)
         {
@@ -40,6 +40,7 @@ namespace SheetReader.Wpf.Test
             }
         }
 
+        private void OpenWithExcel_Click(object sender, RoutedEventArgs e) => OpenWithExcel();
         private void ClearRecentFiles_Click(object sender, RoutedEventArgs e) => Settings.Current.ClearRecentFiles();
         private void Exit_Click(object sender, RoutedEventArgs e) => Close();
         private void About_Click(object sender, RoutedEventArgs e) => MessageBox.Show(Assembly.GetEntryAssembly()!.GetCustomAttribute<AssemblyTitleAttribute>()!.Title + " - " + (IntPtr.Size == 4 ? "32" : "64") + "-bit" + Environment.NewLine + "Copyright (C) 2021-" + DateTime.Now.Year + " Simon Mourier. All rights reserved.", Assembly.GetEntryAssembly()!.GetCustomAttribute<AssemblyTitleAttribute>()!.Title, MessageBoxButton.OK, MessageBoxImage.Information);
@@ -58,6 +59,14 @@ namespace SheetReader.Wpf.Test
                 return;
 
             Load(ofd.FileName);
+        }
+
+        private void OpenWithExcel()
+        {
+            if (FileName == null)
+                return;
+
+            Extensions.OpenFile(FileName);
         }
 
         private void OnFileOpened(object sender, RoutedEventArgs e)
@@ -88,30 +97,13 @@ namespace SheetReader.Wpf.Test
                 return;
 
             Sheets.Clear();
-            var book = new Book();
             try
             {
-                foreach (var sheet in book.EnumerateSheets(fileName))
+                var book = new BookDocument();
+                book.Load(fileName);
+                foreach (var sheet in book.Sheets)
                 {
-                    // we need to load data for WPF data binding
-                    var sheetData = new SheetData { Name = sheet.Name, IsHidden = !sheet.IsVisible };
-                    foreach (var row in sheet.EnumerateRows())
-                    {
-                        var rowData = new RowData(row.Index, row.EnumerateCells().ToList());
-                        sheetData.Rows.Add(rowData);
-                    }
-
-                    sheetData.Columns = sheet.EnumerateColumns().ToList();
-                    if (sheetData.Columns.Count > 0)
-                    {
-                        sheetData.LastColumnIndex = sheetData.Columns.Max(x => x.Index);
-                    }
-
-                    if (sheetData.Rows.Count > 0)
-                    {
-                        sheetData.LastRowIndex = sheetData.Rows.Max(x => x.RowIndex);
-                    }
-                    Sheets.Add(sheetData);
+                    Sheets.Add(sheet);
                 }
             }
             catch (Exception ex)
@@ -123,12 +115,12 @@ namespace SheetReader.Wpf.Test
             // not sure why, but with only 1 tab, binding doesn't work...
             if (Sheets.Count == 1)
             {
-                var dummy = new SheetData();
-                Sheets.Add(dummy);
-                Sheets.Remove(dummy);
+                var first = Sheets[0];
+                Sheets.Add(first);
+                Sheets.RemoveAt(1);
             }
-            Title = "Sheet Reader - " + Path.GetFileName(fileName);
 
+            Title = "Sheet Reader - " + Path.GetFileName(fileName);
             FileName = fileName;
             Settings.Current.AddRecentFile(fileName);
         }

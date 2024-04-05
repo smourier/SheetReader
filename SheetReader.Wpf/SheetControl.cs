@@ -14,7 +14,7 @@ namespace SheetReader.Wpf
         public const string PartScrollViewerName = "PART_ScrollViewer";
 
         public static readonly DependencyProperty SheetProperty = DependencyProperty.Register(nameof(Sheet),
-            typeof(SheetData),
+            typeof(BookDocumentSheet),
             typeof(SheetControl),
             new UIPropertyMetadata(null, (d, e) => ((SheetControl)d).OnSheetChanged()));
 
@@ -33,7 +33,7 @@ namespace SheetReader.Wpf
             typeof(SheetControl),
             new UIPropertyMetadata(0.5));
 
-        public SheetData Sheet { get => (SheetData)GetValue(SheetProperty); set => SetValue(SheetProperty, value); }
+        public BookDocumentSheet Sheet { get => (BookDocumentSheet)GetValue(SheetProperty); set => SetValue(SheetProperty, value); }
         public double ColumnWidth { get { return (double)GetValue(ColumnWidthProperty); } set { SetValue(ColumnWidthProperty, value); } }
         public double RowHeight { get { return (double)GetValue(RowHeightProperty); } set { SetValue(RowHeightProperty, value); } }
         public double GridLineSize { get => (double)GetValue(GridLineSizeProperty); set => SetValue(GridLineSizeProperty, value); }
@@ -193,7 +193,9 @@ namespace SheetReader.Wpf
 
                 for (var i = firstDrawnRowIndex; i <= lastDrawnRowIndex; i++)
                 {
-                    var row = control.Sheet.Rows[i];
+                    if (!control.Sheet.Rows.TryGetValue(i, out var row))
+                        continue;
+
                     for (var j = firstDrawnColumnIndex; j <= lastDrawnColumnIndex; j++)
                     {
                         if (j >= row.Cells.Count)

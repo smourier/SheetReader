@@ -17,26 +17,38 @@ namespace SheetReader
                 var rowData = new BookDocumentRow(row);
                 _rows[row.Index] = rowData;
 
-                if (row.Index > LastRowIndex)
+                if (LastRowIndex == null || row.Index > LastRowIndex)
                 {
                     LastRowIndex = row.Index;
+                }
+
+                if (FirstRowIndex == null || row.Index < FirstRowIndex)
+                {
+                    FirstRowIndex = row.Index;
                 }
             }
 
             foreach (var col in sheet.EnumerateColumns())
             {
                 _columns[col.Index] = col;
-                if (col.Index > LastColumnIndex)
+                if (LastColumnIndex == null || col.Index > LastColumnIndex)
                 {
                     LastColumnIndex = col.Index;
+                }
+
+                if (FirstColumnIndex == null || col.Index < FirstColumnIndex)
+                {
+                    FirstColumnIndex = col.Index;
                 }
             }
         }
 
         public string Name { get; }
         public bool IsHidden { get; }
-        public int LastColumnIndex { get; }
-        public int LastRowIndex { get; }
+        public int? FirstColumnIndex { get; }
+        public int? LastColumnIndex { get; }
+        public int? FirstRowIndex { get; }
+        public int? LastRowIndex { get; }
         public IReadOnlyDictionary<int, BookDocumentRow> Rows => _rows;
         public IReadOnlyDictionary<int, Column> Columns => _columns;
 

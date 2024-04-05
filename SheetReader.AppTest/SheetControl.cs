@@ -28,33 +28,24 @@ namespace SheetReader.AppTest
         private double GetRowHeight() => Math.Max(RowHeight, 10);
         private double GetRowMargin() => 60;
 
-        private static string GetExcelColumnName(int index)
-        {
-            index++;
-            var name = string.Empty;
-            while (index > 0)
-            {
-                var mod = (index - 1) % 26;
-                name = (char)('A' + mod) + name;
-                index = (index - mod) / 26;
-            }
-            return name;
-        }
+        private bool IsSheetValid() => Sheet != null &&
+                Sheet.FirstColumnIndex.HasValue && Sheet.LastColumnIndex.HasValue &&
+                Sheet.FirstRowIndex.HasValue && Sheet.LastRowIndex.HasValue;
 
         protected override Size MeasureOverride(Size availableSize)
         {
-            if (Sheet == null)
+            if (!IsSheetValid())
                 return new Size();
 
             var rowHeight = GetRowHeight();
             var rowMargin = GetRowMargin();
             var headerHeight = rowHeight;
-            return new Size(rowMargin + GetColSize() * (Sheet.LastColumnIndex + 1), headerHeight + rowHeight * (Sheet.LastRowIndex + 1));
+            return new Size(rowMargin + GetColSize() * (Sheet.LastColumnIndex!.Value + 1), headerHeight + rowHeight * (Sheet.LastRowIndex!.Value + 1));
         }
 
         protected override void OnRender(DrawingContext drawingContext)
         {
-            if (Sheet == null)
+            if (!IsSheetValid())
                 return;
 
             var dpi = VisualTreeHelper.GetDpi(this);
@@ -66,8 +57,8 @@ namespace SheetReader.AppTest
             var headerHeight = rowHeight;
 
             // header backgrounds
-            drawingContext.DrawRectangle(Brushes.LightGray, null, new Rect(0, headerHeight, rowMargin, (Sheet.LastRowIndex + 1) * rowHeight));
-            drawingContext.DrawRectangle(Brushes.LightGray, null, new Rect(rowMargin, 0, (Sheet.LastColumnIndex + 1) * colSize, headerHeight));
+            drawingContext.DrawRectangle(Brushes.LightGray, null, new Rect(0, headerHeight, rowMargin, (Sheet.LastRowIndex!.Value + 1) * rowHeight));
+            drawingContext.DrawRectangle(Brushes.LightGray, null, new Rect(rowMargin, 0, (Sheet.LastColumnIndex!.Value + 1) * colSize, headerHeight));
 
             // includes col header
             for (var i = 0; i < Sheet.LastColumnIndex + 2 + 1; i++)
@@ -86,7 +77,7 @@ namespace SheetReader.AppTest
                 // draw col name
                 if (i < Sheet.LastColumnIndex + 1)
                 {
-                    var name = GetExcelColumnName(i);
+                    var name = Row.GetExcelColumnName(i);
                     var formatted = new FormattedText(name, CultureInfo.CurrentCulture, FlowDirection.LeftToRight, _typeFace, fontSize, Brushes.Black, dpi.PixelsPerDip)
                     {
                         MaxTextWidth = rowMargin,

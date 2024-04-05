@@ -35,14 +35,14 @@ namespace SheetReader.Wpf.Test
                 var lastRecent = Settings.Current.RecentFilesPaths?.FirstOrDefault();
                 if (lastRecent != null)
                 {
-                    Load(lastRecent.FilePath);
+                    LoadDocument(lastRecent.FilePath);
                 }
             }
         }
 
         private void OpenWithExcel_Click(object sender, RoutedEventArgs e) => OpenWithExcel();
         private void ClearRecentFiles_Click(object sender, RoutedEventArgs e) => Settings.Current.ClearRecentFiles();
-        private void Exit_Click(object sender, RoutedEventArgs e) => Close();
+        private void Exit_Click(object sender, RoutedEventArgs e) => CloseDocument();
         private void About_Click(object sender, RoutedEventArgs e) => MessageBox.Show(Assembly.GetEntryAssembly()!.GetCustomAttribute<AssemblyTitleAttribute>()!.Title + " - " + (IntPtr.Size == 4 ? "32" : "64") + "-bit" + Environment.NewLine + "Copyright (C) 2021-" + DateTime.Now.Year + " Simon Mourier. All rights reserved.", Assembly.GetEntryAssembly()!.GetCustomAttribute<AssemblyTitleAttribute>()!.Title, MessageBoxButton.OK, MessageBoxImage.Information);
         private void Open_Click(object sender, RoutedEventArgs e)
         {
@@ -58,7 +58,7 @@ namespace SheetReader.Wpf.Test
             if (ofd.ShowDialog() != true)
                 return;
 
-            Load(ofd.FileName);
+            LoadDocument(ofd.FileName);
         }
 
         private void OpenWithExcel()
@@ -84,45 +84,50 @@ namespace SheetReader.Wpf.Test
                 {
                     var item = new MenuItem { Header = recent.FilePath };
                     RecentFilesMenuItem.Items.Insert(RecentFilesMenuItem.Items.Count - fixedRecentItemsCount, item);
-                    item.Click += (s, e) => Load(recent.FilePath);
+                    item.Click += (s, e) => LoadDocument(recent.FilePath);
                 }
             }
 
             RecentFilesMenuItem.IsEnabled = RecentFilesMenuItem.Items.Count > fixedRecentItemsCount;
         }
 
-        private void Load(string? fileName)
+        private void CloseDocument() => LoadDocument(null);
+        private void LoadDocument(string? fileName)
         {
-            if (fileName == null || fileName.EqualsIgnoreCase(FileName))
-                return;
-
             Sheets.Clear();
-            try
+            if (fileName != null)
             {
-                var book = new BookDocument();
-                book.Load(fileName);
-                foreach (var sheet in book.Sheets)
+                try
                 {
-                    Sheets.Add(sheet);
+                    var book = new BookDocument();
+                    book.Load(fileName);
+                    foreach (var sheet in book.Sheets)
+                    {
+                        Sheets.Add(sheet);
+                    }
                 }
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show(ex.GetAllMessagesWithDots(), "Error");
-                return;
-            }
+                catch (Exception ex)
+                {
+                    MessageBox.Show(ex.GetAllMessagesWithDots(), "Error");
+                    return;
+                }
 
-            // not sure why, but with only 1 tab, binding doesn't work...
-            if (Sheets.Count == 1)
-            {
-                var first = Sheets[0];
-                Sheets.Add(first);
-                Sheets.RemoveAt(1);
-            }
+                // not sure why, but with only 1 tab, binding doesn't work...
+                if (Sheets.Count == 1)
+                {
+                    var first = Sheets[0];
+                    Sheets.Add(first);
+                    Sheets.RemoveAt(1);
+                }
 
-            Title = "Sheet Reader - " + Path.GetFileName(fileName);
-            FileName = fileName;
-            Settings.Current.AddRecentFile(fileName);
+                Title = "Sheet Reader - " + Path.GetFileName(fileName);
+                FileName = fileName;
+                Settings.Current.AddRecentFile(fileName);
+            }
+            else
+            {
+                Title = "Sheet Reader";
+            }
         }
 
         private void Grid_Drop(object sender, DragEventArgs e)
@@ -131,7 +136,7 @@ namespace SheetReader.Wpf.Test
             {
                 foreach (var file in files.Where(f => Book.IsSupportedFileExtension(Path.GetExtension(f))))
                 {
-                    Load(file);
+                    LoadDocument(file);
                 }
             }
         }

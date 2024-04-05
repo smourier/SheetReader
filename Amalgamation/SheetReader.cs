@@ -358,7 +358,7 @@ namespace SheetReader
                 Book = book;
                 Element = element;
                 Reader = reader;
-                Name = element.Attribute("name")?.Value;
+                Name = element.Attribute("name")?.Value!;
                 var state = element.Attribute("state")?.Value;
                 if (state.EqualsIgnoreCase("hidden"))
                 {
@@ -619,6 +619,148 @@ namespace SheetReader
                 Dispose(disposing: true);
                 GC.SuppressFinalize(this);
             }
+        }
+    }
+}
+
+namespace SheetReader
+{
+    // this class is for loading a workbook (stateful) vs enumerating it (stateless)
+    public sealed class BookDocument
+    {
+        private readonly List<BookDocumentSheet> _sheets = [];
+
+        public IReadOnlyList<BookDocumentSheet> Sheets => _sheets;
+
+        public void Load(string filePath, BookFormat? format = null)
+        {
+            ArgumentNullException.ThrowIfNull(filePath);
+            format ??= BookFormat.GetFromFileExtension(Path.GetExtension(filePath));
+            ArgumentNullException.ThrowIfNull(format);
+
+            using var stream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+            format.IsStreamOwned = true;
+            format.InputFilePath = filePath;
+            Load(stream, format);
+        }
+
+        public void Load(Stream stream, BookFormat format)
+        {
+            ArgumentNullException.ThrowIfNull(stream);
+            _sheets.Clear();
+            var book = new Book();
+            foreach (var sheet in book.EnumerateSheets(stream, format))
+            {
+                var docSheet = new BookDocumentSheet(sheet);
+                _sheets.Add(docSheet);
+            }
+        }
+    }
+}
+
+namespace SheetReader
+{
+    public sealed class BookDocumentRow
+    {
+        private readonly Dictionary<int, Cell> _cells = [];
+
+        internal BookDocumentRow(Row row)
+        {
+            RowIndex = row.Index;
+            IsHidden = !row.IsVisible;
+            foreach (var cell in row.EnumerateCells())
+            {
+                _cells[cell.ColumnIndex] = cell;
+
+                if (LastCellIndex == null || row.Index > LastCellIndex)
+                {
+                    LastCellIndex = row.Index;
+                }
+
+                if (FirstCellIndex == null || row.Index < FirstCellIndex)
+                {
+                    FirstCellIndex = row.Index;
+                }
+            }
+        }
+
+        public int RowIndex { get; }
+        public bool IsHidden { get; }
+        public int? FirstCellIndex { get; }
+        public int? LastCellIndex { get; }
+        public IReadOnlyDictionary<int, Cell> Cells => _cells;
+
+        public override string ToString() => RowIndex.ToString();
+    }
+}
+
+namespace SheetReader
+{
+    public sealed class BookDocumentSheet
+    {
+        private readonly Dictionary<int, BookDocumentRow> _rows = [];
+        private readonly Dictionary<int, Column> _columns = [];
+
+        internal BookDocumentSheet(Sheet sheet)
+        {
+            Name = sheet.Name ?? string.Empty;
+            IsHidden = !sheet.IsVisible;
+
+            foreach (var row in sheet.EnumerateRows())
+            {
+                var rowData = new BookDocumentRow(row);
+                _rows[row.Index] = rowData;
+
+                if (LastRowIndex == null || row.Index > LastRowIndex)
+                {
+                    LastRowIndex = row.Index;
+                }
+
+                if (FirstRowIndex == null || row.Index < FirstRowIndex)
+                {
+                    FirstRowIndex = row.Index;
+                }
+            }
+
+            foreach (var col in sheet.EnumerateColumns())
+            {
+                _columns[col.Index] = col;
+                if (LastColumnIndex == null || col.Index > LastColumnIndex)
+                {
+                    LastColumnIndex = col.Index;
+                }
+
+                if (FirstColumnIndex == null || col.Index < FirstColumnIndex)
+                {
+                    FirstColumnIndex = col.Index;
+                }
+            }
+        }
+
+        public string Name { get; }
+        public bool IsHidden { get; }
+        public int? FirstColumnIndex { get; }
+        public int? LastColumnIndex { get; }
+        public int? FirstRowIndex { get; }
+        public int? LastRowIndex { get; }
+        public IReadOnlyDictionary<int, BookDocumentRow> Rows => _rows;
+        public IReadOnlyDictionary<int, Column> Columns => _columns;
+
+        public override string ToString() => Name;
+
+        public Cell? GetCell(RowCol rowCol)
+        {
+            ArgumentNullException.ThrowIfNull(rowCol);
+            return GetCell(rowCol.RowIndex, rowCol.ColumnIndex);
+        }
+
+        public Cell? GetCell(int rowIndex, int columnIndex)
+        {
+            if (!_rows.TryGetValue(rowIndex, out var row))
+                return null;
+
+            row.Cells.TryGetValue(columnIndex, out var cell);
+            return cell;
         }
     }
 }
@@ -978,7 +1120,31 @@ namespace SheetReader
 
         public abstract IEnumerable<Cell> EnumerateCells();
 
+        public static string GetExcelColumnName(int index)
+        {
+            index++;
+            var name = string.Empty;
+            while (index > 0)
+            {
+                var mod = (index - 1) % 26;
+                name = (char)('A' + mod) + name;
+                index = (index - mod) / 26;
+            }
+            return name;
+        }
+
         public override string ToString() => Index.ToString();
+    }
+}
+
+namespace SheetReader
+{
+    public class RowCol
+    {
+        public virtual int RowIndex { get; set; }
+        public virtual int ColumnIndex { get; set; }
+
+        public override string ToString() => RowIndex + "," + ColumnIndex;
     }
 }
 

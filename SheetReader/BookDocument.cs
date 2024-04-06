@@ -27,17 +27,21 @@ namespace SheetReader
         {
             ArgumentNullException.ThrowIfNull(stream);
             _sheets.Clear();
-            var book = new Book();
-            foreach (var sheet in book.EnumerateSheets(stream, format))
+            var book = CreateBook();
+            if (book != null)
             {
-                var docSheet = CreateSheet(sheet);
-                if (docSheet != null)
+                foreach (var sheet in book.EnumerateSheets(stream, format))
                 {
-                    _sheets.Add(docSheet);
+                    var docSheet = CreateSheet(sheet);
+                    if (docSheet != null)
+                    {
+                        _sheets.Add(docSheet);
+                    }
                 }
             }
         }
 
+        protected virtual Book CreateBook() => new();
         protected virtual BookDocumentSheet CreateSheet(Sheet sheet) => new(sheet);
     }
 }

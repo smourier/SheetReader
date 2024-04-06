@@ -10,6 +10,8 @@ namespace SheetReader
         public abstract IEnumerable<Column> EnumerateColumns();
         public abstract IEnumerable<Row> EnumerateRows();
 
+        protected internal virtual Column CreateColumn() => new();
+
         public override string ToString() => Name ?? string.Empty;
     }
 }

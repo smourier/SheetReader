@@ -140,5 +140,30 @@ namespace SheetReader.Wpf.Test
                 }
             }
         }
+
+        private void SheetControl_MouseMove(object sender, MouseEventArgs e)
+        {
+            var ctl = (SheetControl)sender;
+            var result = ctl.HitTest(e.GetPosition(ctl));
+            if (result.IsOverRowHeader)
+            {
+                status.Text = $"Row {result.RowCol!.RowIndex + 1}";
+                return;
+            }
+
+            if (result.IsOverColumnHeader && result.RowCol!.ColumnIndex <= ctl.Sheet.LastColumnIndex)
+            {
+                status.Text = $"Column {Row.GetExcelColumnName(result.RowCol!.ColumnIndex)} ({result.RowCol.ColumnIndex})";
+                return;
+            }
+
+            var cell = result.Cell;
+            if (cell != null)
+            {
+                status.Text = $"{Row.GetExcelColumnName(result.RowCol!.ColumnIndex)}{result.RowCol.RowIndex + 1}: {cell.Value}";
+                return;
+            }
+            status.Text = string.Empty;
+        }
     }
 }

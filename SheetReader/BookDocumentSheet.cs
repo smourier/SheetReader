@@ -56,9 +56,11 @@ namespace SheetReader
 
         public override string ToString() => Name;
 
-        public Cell? GetCell(RowCol rowCol)
+        public Cell? GetCell(RowCol? rowCol)
         {
-            ArgumentNullException.ThrowIfNull(rowCol);
+            if (rowCol == null)
+                return null;
+
             return GetCell(rowCol.RowIndex, rowCol.ColumnIndex);
         }
 

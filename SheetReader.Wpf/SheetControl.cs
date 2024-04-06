@@ -1,8 +1,10 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Media;
 using SheetReader.Wpf.Utilities;
 
@@ -75,11 +77,28 @@ namespace SheetReader.Wpf
 
         private ScrollViewer? _scrollViewer;
         private SheetGrid? _grid;
+        private MovingColumn? _movingColumn;
+        private readonly Dictionary<int, SheetControlColumn> _columnSettings = [];
 
-        public RowCol? GetRowCol(Point point) => _grid?.GetRowCol(point);
+        public SheetControl()
+        {
+            //Focusable = true;
+        }
+
+        public SheetControlHitTestResult HitTest(Point point) => _grid?.HitTest(point) ?? new();
 
         protected virtual void OnSheetChanged()
         {
+            _columnSettings.Clear();
+            var sheet = Sheet;
+            if (sheet != null)
+            {
+                foreach (var kv in sheet.Columns)
+                {
+                    _columnSettings[kv.Key] = new SheetControlColumn(kv.Value) { Width = GetColWidth() };
+                }
+            }
+
             _grid?.InvalidateMeasure();
         }
 
@@ -95,44 +114,150 @@ namespace SheetReader.Wpf
             _scrollViewer.ScrollChanged += OnScrollChanged;
         }
 
+        protected override void OnPreviewKeyDown(KeyEventArgs e)
+        {
+            Log("OnPreviewKeyDown:" + e.Key);
+            if (e.Key == Key.Escape)
+            {
+                ReleaseCapture(false);
+            }
+        }
+
+        private void ReleaseCapture(bool commit)
+        {
+            if (_movingColumn != null && !commit)
+            {
+                _movingColumn.Current = _movingColumn.Start;
+            }
+
+            _movingColumn = null;
+            Cursor = null;
+            ReleaseMouseCapture();
+            Log("ReleaseMouseCapture commit:" + commit);
+        }
+
+        protected override void OnPreviewMouseLeftButtonUp(MouseButtonEventArgs e) => ReleaseCapture(true);
+        protected override void OnPreviewMouseLeftButtonDown(MouseButtonEventArgs e)
+        {
+            if (_scrollViewer == null)
+                return;
+
+            var result = HitTest(e.GetPosition(_scrollViewer));
+            if (result.MovingColumnIndex.HasValue)
+            {
+                Cursor = Cursors.SizeWE;
+                CaptureMouse();
+                Log("Moving col:" + result.MovingColumnIndex.Value);
+                _movingColumn = new MovingColumn(this, _columnSettings[result.MovingColumnIndex.Value], e.GetPosition(this));
+                Focus();
+            }
+        }
+
+        protected override void OnMouseMove(MouseEventArgs e)
+        {
+            if (_scrollViewer == null)
+                return;
+
+            if (_movingColumn != null)
+            {
+                Cursor = Cursors.SizeWE;
+                _movingColumn.Current = e.GetPosition(this);
+            }
+            else
+            {
+                var result = HitTest(e.GetPosition(_scrollViewer));
+                if (result.MovingColumnIndex.HasValue)
+                {
+                    Cursor = Cursors.SizeWE;
+                }
+                else
+                {
+                    Cursor = null;
+                }
+            }
+        }
+
         private void OnScrollChanged(object sender, ScrollChangedEventArgs e)
         {
             _grid?.InvalidateVisual();
+        }
+
+        private sealed class MovingColumn(SheetControl control, SheetControlColumn column, Point start)
+        {
+            private Point _current;
+            private double _width = column.Width;
+
+            public SheetControlColumn Column { get; } = column;
+            public Point Start { get; } = start;
+            public Point Current
+            {
+                get => _current;
+                set
+                {
+                    if (_current == value)
+                        return;
+
+                    _current = value;
+
+                    const int minSize = 4;
+                    var width = Math.Max(_current.X - Start.X, minSize);
+                    if (width == _width)
+                        return;
+
+                    control._grid?.InvalidateVisual();
+                }
+            }
         }
 
         private sealed class SheetGrid(SheetControl control) : UIElement
         {
             private bool IsSheetVisible() => control.Sheet != null && control.Sheet.Columns.Count > 0 && control.Sheet.Rows.Count > 0 && control._scrollViewer != null;
 
-            public Cell? GetNullifiedCellText(Point point)
+            public SheetControlHitTestResult HitTest(Point point)
             {
-                var rc = GetRowCol(point);
-                if (rc == null)
-                    return null;
+                var result = new SheetControlHitTestResult();
+                if (IsSheetVisible())
+                {
+                    var colWidth = control.GetColWidth();
+                    var colFullWidth = colWidth + control.GridLineSize;
+                    var rowHeight = control.GetRowHeight();
+                    var rowFullHeight = rowHeight + control.GridLineSize;
+                    var rowsHeaderWidth = control.GetRowMargin();
+                    var rowsHeaderFullWidth = rowsHeaderWidth + control.GridLineSize;
+                    var columnsHeaderHeight = rowHeight;
+                    var columnsHeaderFullHeight = columnsHeaderHeight + control.GridLineSize;
 
-                return control.Sheet.GetCell(rc);
-            }
+                    var offsetX = control._scrollViewer!.HorizontalOffset;
+                    var offsetY = control._scrollViewer.VerticalOffset;
 
-            public RowCol? GetRowCol(Point point)
-            {
-                if (!IsSheetVisible())
-                    return null;
+                    var x = point.X + offsetX;
+                    var y = point.Y + offsetY;
 
-                var colWidth = control.GetColWidth();
-                var colFullWidth = colWidth + control.GridLineSize;
-                var rowHeight = control.GetRowHeight();
-                var rowFullHeight = rowHeight + control.GridLineSize;
-                var rowsHeaderWidth = control.GetRowMargin();
-                var rowsHeaderFullWidth = rowsHeaderWidth + control.GridLineSize;
-                var columnsHeaderHeight = rowHeight;
-                var columnsHeaderFullHeight = columnsHeaderHeight + control.GridLineSize;
+                    var columnIndex = (x - rowsHeaderFullWidth) / colFullWidth;
+                    var rowIndex = (y - columnsHeaderFullHeight) / rowFullHeight;
 
-                var offsetX = control._scrollViewer!.HorizontalOffset;
-                var offsetY = control._scrollViewer.VerticalOffset;
+                    result.RowCol = new RowCol { ColumnIndex = (int)Math.Floor(columnIndex), RowIndex = (int)Math.Floor(rowIndex) };
+                    result.Cell = control.Sheet?.GetCell(result.RowCol);
 
-                var columnIndex = (point.X + offsetX - rowsHeaderFullWidth) / colFullWidth;
-                var rowIndex = (point.Y + offsetY - columnsHeaderFullHeight) / rowFullHeight;
-                return new RowCol { ColumnIndex = (int)columnIndex, RowIndex = (int)rowIndex };
+                    // independent from scrollviewer
+                    result.IsOverRowHeader = point.X >= 0 && point.X <= rowsHeaderFullWidth;
+                    result.IsOverColumnHeader = point.Y >= 0 && point.Y <= columnsHeaderFullHeight;
+
+                    if (!result.IsOverRowHeader)
+                    {
+                        var mod = (point.X + offsetX - rowsHeaderFullWidth) % colFullWidth;
+                        const int tolerance = 4;
+                        if (mod < tolerance)
+                        {
+                            result.MovingColumnIndex = result.RowCol.ColumnIndex - 1;
+                        }
+                        else if ((colFullWidth - mod) < tolerance)
+                        {
+                            result.MovingColumnIndex = result.RowCol.ColumnIndex;
+                        }
+                    }
+                }
+                return result;
             }
 
             protected override Size MeasureCore(Size availableSize)

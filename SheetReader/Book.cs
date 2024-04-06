@@ -331,14 +331,6 @@ namespace SheetReader
             }
         }
 
-        protected class XlsxColumn : Column
-        {
-            public XlsxColumn(int index)
-            {
-                Index = index;
-            }
-        }
-
         protected class XlsxSheet : Sheet
         {
             public XlsxSheet(XlsxBook book, XElement element, XmlReader reader)
@@ -360,7 +352,7 @@ namespace SheetReader
             public XlsxBook Book { get; }
             public XElement Element { get; }
             public XmlReader Reader { get; }
-            public IDictionary<int, XlsxColumn> Columns { get; } = new Dictionary<int, XlsxColumn>();
+            public IDictionary<int, Column> Columns { get; } = new Dictionary<int, Column>();
 
             public override IEnumerable<Column> EnumerateColumns() => Columns.Values.OrderBy(c => c.Index);
 
@@ -405,7 +397,6 @@ namespace SheetReader
             }
 
             protected virtual XlsxRow CreateRow() => new(this);
-            protected virtual internal XlsxColumn CreateColumn(XlsxCell cell) => new(cell?.ColumnIndex ?? 0);
             protected virtual internal XlsxCell CreateCell(XlsxRow row) => new(row);
         }
 
@@ -466,7 +457,8 @@ namespace SheetReader
                 {
                     if (!row.Sheet.Columns.ContainsKey(ColumnIndex))
                     {
-                        var column = row.Sheet.CreateColumn(this);
+                        var column = row.Sheet.CreateColumn();
+                        column.Index = ColumnIndex;
                         row.Sheet.Columns.Add(ColumnIndex, column);
                     }
                 }
@@ -611,7 +603,6 @@ namespace SheetReader
             }
 
             protected virtual CsvRow CreateRow(IEnumerator<string> cells) => new(cells);
-            protected virtual Column CreateColumn() => new();
 
             protected virtual void Dispose(bool disposing)
             {

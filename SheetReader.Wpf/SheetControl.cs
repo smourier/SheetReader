@@ -86,7 +86,15 @@ namespace SheetReader.Wpf
         private MovingColumn? _movingColumn;
         private readonly List<SheetControlColumn> _columnSettings = [];
 
-        public SheetControlHitTestResult HitTest(Point point) => _grid?.HitTest(point) ?? new();
+        public virtual SheetControlHitTestResult HitTest(Point point) => _grid?.HitTest(point) ?? new();
+        public virtual void SetColumnSize(int columnIndex, double width)
+        {
+            ArgumentOutOfRangeException.ThrowIfNegative(width);
+            ArgumentOutOfRangeException.ThrowIfNegative(columnIndex);
+            ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(columnIndex, _columnSettings.Count);
+            _columnSettings[columnIndex].Width = width;
+            _grid?.InvalidateMeasure();
+        }
 
         protected virtual void OnSheetChanged()
         {
@@ -147,9 +155,41 @@ namespace SheetReader.Wpf
         {
             if (e.LeftButton == MouseButtonState.Pressed)
             {
-                var result = HitTest(e.GetPosition(_scrollViewer));
-                if (result.MovingColumnIndex.HasValue)
+                var sheet = Sheet;
+                if (sheet != null)
                 {
+                    var result = HitTest(e.GetPosition(_scrollViewer));
+                    if (result.MovingColumnIndex.HasValue)
+                    {
+                        var typeFace = new Typeface(FontFamily, FontStyle, FontWeight, FontStretch);
+                        var dpi = VisualTreeHelper.GetDpi(this);
+                        double? autoSize = null;
+                        foreach (var kv in sheet.Rows)
+                        {
+                            if (kv.Value.Cells.TryGetValue(result.MovingColumnIndex.Value, out var cell))
+                            {
+                                var text = string.Format("{0}", cell.Value);
+                                if (!string.IsNullOrEmpty(text))
+                                {
+                                    var ft = new FormattedText(text, CultureInfo.CurrentCulture, FlowDirection.LeftToRight, typeFace, FontSize, Foreground, dpi.PixelsPerDip)
+                                    {
+                                        Trimming = TextTrimming,
+                                        MaxLineCount = 1
+                                    };
+
+                                    if (!autoSize.HasValue || ft.WidthIncludingTrailingWhitespace > autoSize)
+                                    {
+                                        autoSize = ft.WidthIncludingTrailingWhitespace;
+                                    }
+                                }
+                            }
+                        }
+
+                        if (autoSize.HasValue)
+                        {
+                            SetColumnSize(result.MovingColumnIndex.Value, autoSize.Value);
+                        }
+                    }
                 }
             }
         }
@@ -331,7 +371,6 @@ namespace SheetReader.Wpf
                 var lineSize = control.GetLineSize();
                 var pen = new Pen(control.LineBrush, lineSize);
                 var typeFace = new Typeface(control.FontFamily, control.FontStyle, control.FontWeight, control.FontStretch);
-
                 var dpi = VisualTreeHelper.GetDpi(this);
                 var rowHeight = control.GetRowHeight();
                 var rowFullHeight = rowHeight + lineSize;

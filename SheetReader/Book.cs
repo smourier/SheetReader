@@ -76,12 +76,19 @@ namespace SheetReader
         {
             ArgumentNullException.ThrowIfNull(stream);
             ArgumentNullException.ThrowIfNull(format);
-            yield return new CsvSheet(stream, format);
+            var sheet = CreateCsvSheet(stream, format);
+            if (sheet != null)
+            {
+                yield return sheet;
+            }
+
             if (format.IsStreamOwned)
             {
                 stream.Dispose();
             }
         }
+
+        protected virtual CsvSheet CreateCsvSheet(Stream stream, CsvBookFormat format) => new(stream, format);
 
         protected virtual IEnumerable<Sheet> EnumerateXlsxSheets(Stream stream, XlsxBookFormat format)
         {
@@ -116,12 +123,17 @@ namespace SheetReader
             using var workbookRelsStream = workbookRelsEntry.Open();
             var workBookRelsDoc = XDocument.Load(workbookRelsStream);
 
-            var wb = new XlsxBook(archive, relPath, workBookDoc, workBookRelsDoc);
-            foreach (var sheet in wb.EnumerateSheets())
+            var wb = CreateXlsxBook(archive, relPath, workBookDoc, workBookRelsDoc);
+            if (wb != null)
             {
-                yield return sheet;
+                foreach (var sheet in wb.EnumerateSheets())
+                {
+                    yield return sheet;
+                }
             }
         }
+
+        protected virtual XlsxBook CreateXlsxBook(ZipArchive archive, string relativePath, XDocument workbookDocument, XDocument relsDocument) => new(archive, relativePath, workbookDocument, relsDocument);
 
         protected class XlsxBook
         {
@@ -185,8 +197,11 @@ namespace SheetReader
 
                         foreach (var formatElement in stylesDoc.XPathSelectElements(xpath, XmlNamespaceManager))
                         {
-                            var xformat = new XlsxFormat(this, formatElement);
-                            formats[formats.Count] = xformat;
+                            var xformat = CreateXlsxFormat(formatElement);
+                            if (xformat != null)
+                            {
+                                formats[formats.Count] = xformat;
+                            }
                         }
                     }
                 }
@@ -199,6 +214,9 @@ namespace SheetReader
             public XDocument RelsDocument { get; }
             public IReadOnlyList<string> SharedStrings { get; }
             public IReadOnlyDictionary<int, XlsxFormat> Formats { get; }
+
+            protected virtual XlsxFormat CreateXlsxFormat(XElement element) => new(this, element);
+            protected virtual XlsxSheet CreateXlsxSheet(XElement element, XmlReader reader) => new(this, element, reader);
 
             internal static bool IsMainNamespace(string ns) => ns == _main || ns == _oxMain;
             internal static bool IsOpenXml(XElement? element) => element?.Name.Namespace.NamespaceName == _oxMain;
@@ -256,8 +274,9 @@ namespace SheetReader
 
                     using var sheetStream = sheetEntry.Open();
                     using var reader = XmlReader.Create(sheetStream);
-                    var sheet = new XlsxSheet(this, sheetElement, reader);
-                    yield return sheet;
+                    var sheet = CreateXlsxSheet(sheetElement, reader);
+                    if (sheet != null)
+                        yield return sheet;
                 }
             }
         }
@@ -368,18 +387,26 @@ namespace SheetReader
                                 if (r == null || !int.TryParse(r, out var rowIndex) || rowIndex <= 0)
                                     continue;
 
-                                var row = new XlsxRow(this) { Index = rowIndex - 1 };
-                                var hidden = Reader.GetAttribute("hidden");
-                                if (hidden != null && hidden.EqualsIgnoreCase("true") || hidden == "1")
+                                var row = CreateRow();
+                                if (row != null)
                                 {
-                                    row.IsVisible = false;
+                                    row.Index = rowIndex - 1;
+                                    var hidden = Reader.GetAttribute("hidden");
+                                    if (hidden != null && hidden.EqualsIgnoreCase("true") || hidden == "1")
+                                    {
+                                        row.IsVisible = false;
+                                    }
+                                    yield return row;
                                 }
-                                yield return row;
                             }
                         }
                     }
                 }
             }
+
+            protected virtual XlsxRow CreateRow() => new(this);
+            protected virtual internal XlsxColumn CreateColumn(XlsxCell cell) => new(cell?.ColumnIndex ?? 0);
+            protected virtual internal XlsxCell CreateCell(XlsxRow row) => new(row);
         }
 
         protected class XlsxRow : Row
@@ -404,8 +431,9 @@ namespace SheetReader
 
                     if (Sheet.Reader.LocalName == "c" && XlsxBook.IsMainNamespace(Sheet.Reader.NamespaceURI))
                     {
-                        var cell = new XlsxCell(this);
-                        yield return cell;
+                        var cell = Sheet.CreateCell(this);
+                        if (cell != null)
+                            yield return cell;
                     }
                 }
             }
@@ -438,7 +466,7 @@ namespace SheetReader
                 {
                     if (!row.Sheet.Columns.ContainsKey(ColumnIndex))
                     {
-                        var column = new XlsxColumn(ColumnIndex);
+                        var column = row.Sheet.CreateColumn(this);
                         row.Sheet.Columns.Add(ColumnIndex, column);
                     }
                 }
@@ -520,10 +548,19 @@ namespace SheetReader
                 var index = 0;
                 while (Cells.MoveNext())
                 {
-                    yield return new Cell { ColumnIndex = index, Value = Cells.Current, RawValue = Cells.Current };
-                    index++;
+                    var cell = CreateCell();
+                    cell.ColumnIndex = index;
+                    cell.Value = Cells.Current;
+                    cell.RawValue = Cells.Current;
+                    if (cell != null)
+                    {
+                        yield return cell;
+                        index++;
+                    }
                 }
             }
+
+            protected virtual Cell CreateCell() => new();
         }
 
         protected class CsvSheet : Sheet, IDisposable
@@ -549,8 +586,13 @@ namespace SheetReader
                 while (!Reader.EndOfStream)
                 {
                     var cells = Reader.ReadRow().GetEnumerator();
-                    yield return new CsvRow(cells) { Index = rowIndex };
-                    rowIndex++;
+                    var row = CreateRow(cells);
+                    if (row != null)
+                    {
+                        row.Index = rowIndex;
+                        yield return row;
+                        rowIndex++;
+                    }
                 }
             }
 
@@ -558,9 +600,18 @@ namespace SheetReader
             {
                 for (var i = 0; i < Reader.Columns.Count; i++)
                 {
-                    yield return new Column { Name = Reader.Columns[i], Index = i };
+                    var column = CreateColumn();
+                    if (column != null)
+                    {
+                        column.Name = Reader.Columns[i];
+                        column.Index = i;
+                        yield return column;
+                    }
                 }
             }
+
+            protected virtual CsvRow CreateRow(IEnumerator<string> cells) => new(cells);
+            protected virtual Column CreateColumn() => new();
 
             protected virtual void Dispose(bool disposing)
             {

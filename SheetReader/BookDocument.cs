@@ -5,13 +5,13 @@ using System.IO;
 namespace SheetReader
 {
     // this class is for loading a workbook (stateful) vs enumerating it (stateless)
-    public sealed class BookDocument
+    public class BookDocument
     {
         private readonly List<BookDocumentSheet> _sheets = [];
 
         public IReadOnlyList<BookDocumentSheet> Sheets => _sheets;
 
-        public void Load(string filePath, BookFormat? format = null)
+        public virtual void Load(string filePath, BookFormat? format = null)
         {
             ArgumentNullException.ThrowIfNull(filePath);
             format ??= BookFormat.GetFromFileExtension(Path.GetExtension(filePath));
@@ -23,16 +23,21 @@ namespace SheetReader
             Load(stream, format);
         }
 
-        public void Load(Stream stream, BookFormat format)
+        public virtual void Load(Stream stream, BookFormat format)
         {
             ArgumentNullException.ThrowIfNull(stream);
             _sheets.Clear();
             var book = new Book();
             foreach (var sheet in book.EnumerateSheets(stream, format))
             {
-                var docSheet = new BookDocumentSheet(sheet);
-                _sheets.Add(docSheet);
+                var docSheet = CreateSheet(sheet);
+                if (docSheet != null)
+                {
+                    _sheets.Add(docSheet);
+                }
             }
         }
+
+        protected virtual BookDocumentSheet CreateSheet(Sheet sheet) => new(sheet);
     }
 }

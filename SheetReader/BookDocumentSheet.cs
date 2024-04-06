@@ -3,19 +3,20 @@ using System.Collections.Generic;
 
 namespace SheetReader
 {
-    public sealed class BookDocumentSheet
+    public class BookDocumentSheet
     {
         private readonly Dictionary<int, BookDocumentRow> _rows = [];
         private readonly Dictionary<int, Column> _columns = [];
 
-        internal BookDocumentSheet(Sheet sheet)
+        public BookDocumentSheet(Sheet sheet)
         {
+            ArgumentNullException.ThrowIfNull(sheet);
             Name = sheet.Name ?? string.Empty;
             IsHidden = !sheet.IsVisible;
 
             foreach (var row in sheet.EnumerateRows())
             {
-                var rowData = new BookDocumentRow(row);
+                var rowData = CreateRow(row);
                 _rows[row.Index] = rowData;
 
                 if (LastRowIndex == null || row.Index > LastRowIndex)
@@ -61,7 +62,7 @@ namespace SheetReader
             return GetCell(rowCol.RowIndex, rowCol.ColumnIndex);
         }
 
-        public Cell? GetCell(int rowIndex, int columnIndex)
+        public virtual Cell? GetCell(int rowIndex, int columnIndex)
         {
             if (!_rows.TryGetValue(rowIndex, out var row))
                 return null;
@@ -69,5 +70,7 @@ namespace SheetReader
             row.Cells.TryGetValue(columnIndex, out var cell);
             return cell;
         }
+
+        protected virtual BookDocumentRow CreateRow(Row row) => new(row);
     }
 }

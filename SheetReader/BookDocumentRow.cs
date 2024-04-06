@@ -1,13 +1,15 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 
 namespace SheetReader
 {
-    public sealed class BookDocumentRow
+    public class BookDocumentRow
     {
         private readonly Dictionary<int, Cell> _cells = [];
 
-        internal BookDocumentRow(Row row)
+        public BookDocumentRow(Row row)
         {
+            ArgumentNullException.ThrowIfNull(row);
             RowIndex = row.Index;
             IsHidden = !row.IsVisible;
             foreach (var cell in row.EnumerateCells())

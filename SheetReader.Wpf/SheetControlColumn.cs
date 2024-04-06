@@ -13,6 +13,6 @@ namespace SheetReader.Wpf
         public Column Column { get; }
         public virtual double Width { get; set; }
 
-        public override string ToString() => Column.ToString();
+        public override string ToString() => $"{Column} {Width}";
     }
 }

@@ -25,6 +25,11 @@ namespace SheetReader.Wpf
             typeof(SheetControl),
             new UIPropertyMetadata(100.0));
 
+        public static readonly DependencyProperty RowMarginProperty = DependencyProperty.Register(nameof(RowMargin),
+            typeof(double),
+            typeof(SheetControl),
+            new UIPropertyMetadata(60.0));
+
         public static readonly DependencyProperty RowHeightProperty = DependencyProperty.Register(nameof(RowHeight),
             typeof(double),
             typeof(SheetControl),
@@ -33,7 +38,7 @@ namespace SheetReader.Wpf
         public static readonly DependencyProperty LineSizeProperty = DependencyProperty.Register(nameof(LineSize),
             typeof(double),
             typeof(SheetControl),
-            new UIPropertyMetadata(20.0));
+            new UIPropertyMetadata(0.5));
 
         public static readonly DependencyProperty HeaderBrushProperty = DependencyProperty.Register(nameof(HeaderBrush),
             typeof(Brush),
@@ -48,7 +53,7 @@ namespace SheetReader.Wpf
         public static readonly DependencyProperty TextAlignmentProperty = DependencyProperty.Register(nameof(TextAlignment),
             typeof(TextAlignment),
             typeof(SheetControl),
-            new UIPropertyMetadata(TextAlignment.Justify));
+            new UIPropertyMetadata(TextAlignment.Left));
 
         public static readonly DependencyProperty TextTrimmingProperty = DependencyProperty.Register(nameof(TextTrimming),
             typeof(TextTrimming),
@@ -57,6 +62,7 @@ namespace SheetReader.Wpf
 
         public BookDocumentSheet Sheet { get => (BookDocumentSheet)GetValue(SheetProperty); set => SetValue(SheetProperty, value); }
         public double ColumnWidth { get { return (double)GetValue(ColumnWidthProperty); } set { SetValue(ColumnWidthProperty, value); } }
+        public double RowMargin { get { return (double)GetValue(RowMarginProperty); } set { SetValue(RowMarginProperty, value); } }
         public double RowHeight { get { return (double)GetValue(RowHeightProperty); } set { SetValue(RowHeightProperty, value); } }
         public double LineSize { get => (double)GetValue(LineSizeProperty); set => SetValue(LineSizeProperty, value); }
         public Brush LineBrush { get { return (Brush)GetValue(LineBrushProperty); } set { SetValue(LineBrushProperty, value); } }
@@ -64,9 +70,8 @@ namespace SheetReader.Wpf
         public TextAlignment TextAlignment { get { return (TextAlignment)GetValue(TextAlignmentProperty); } set { SetValue(TextAlignmentProperty, value); } }
         public TextTrimming TextTrimming { get { return (TextTrimming)GetValue(TextTrimmingProperty); } set { SetValue(TextTrimmingProperty, value); } }
 
-        private double GetColWidth() => Math.Max(ColumnWidth, 10);
         private double GetRowHeight() => Math.Max(RowHeight, 10);
-        private double GetRowMargin() => 60;
+        private double GetRowMargin() => Math.Max(RowMargin, 10);
         private double GetLineSize() => Math.Max(LineSize, 0);
 
         static SheetControl()
@@ -99,7 +104,7 @@ namespace SheetReader.Wpf
                         };
                     }
 
-                    _columnSettings.Add(new SheetControlColumn(column) { Width = GetColWidth() });
+                    _columnSettings.Add(new SheetControlColumn(column) { Width = ColumnWidth });
                 }
             }
 
@@ -120,7 +125,6 @@ namespace SheetReader.Wpf
 
         protected override void OnPreviewKeyDown(KeyEventArgs e)
         {
-            Log("OnPreviewKeyDown:" + e.Key);
             if (e.Key == Key.Escape)
             {
                 ReleaseCapture(false);
@@ -137,7 +141,17 @@ namespace SheetReader.Wpf
             _movingColumn = null;
             Cursor = null;
             ReleaseMouseCapture();
-            Log("ReleaseMouseCapture commit:" + commit);
+        }
+
+        protected override void OnPreviewMouseDoubleClick(MouseButtonEventArgs e)
+        {
+            if (e.LeftButton == MouseButtonState.Pressed)
+            {
+                var result = HitTest(e.GetPosition(_scrollViewer));
+                if (result.MovingColumnIndex.HasValue)
+                {
+                }
+            }
         }
 
         protected override void OnPreviewMouseLeftButtonUp(MouseButtonEventArgs e) => ReleaseCapture(true);
@@ -151,7 +165,6 @@ namespace SheetReader.Wpf
             {
                 Cursor = Cursors.SizeWE;
                 CaptureMouse();
-                Log("Moving col:" + result.MovingColumnIndex.Value);
                 _movingColumn = new MovingColumn(this, _columnSettings[result.MovingColumnIndex.Value], e.GetPosition(this));
                 Focus();
             }
@@ -189,9 +202,9 @@ namespace SheetReader.Wpf
         private sealed class MovingColumn(SheetControl control, SheetControlColumn column, Point start)
         {
             private Point _current;
-            private double _width = column.Width;
 
             public SheetControlColumn Column { get; } = column;
+            public double Width { get; } = column.Width;
             public Point Start { get; } = start;
             public Point Current
             {
@@ -204,11 +217,10 @@ namespace SheetReader.Wpf
                     _current = value;
 
                     const int minSize = 4;
-                    var width = Math.Max(_current.X - Start.X, minSize);
-                    if (width == _width)
-                        return;
-
-                    control._grid?.InvalidateVisual();
+                    var delta = _current.X - Start.X;
+                    var newWidth = Math.Max(Width + delta, minSize);
+                    Column.Width = newWidth;
+                    control._grid?.InvalidateMeasure();
                 }
             }
         }
@@ -222,9 +234,7 @@ namespace SheetReader.Wpf
                 var result = new SheetControlHitTestResult();
                 if (IsSheetVisible())
                 {
-                    var colWidth = control.GetColWidth();
                     var lineSize = control.GetLineSize();
-                    var colFullWidth = colWidth + lineSize;
                     var rowHeight = control.GetRowHeight();
                     var rowFullHeight = rowHeight + lineSize;
                     var rowsHeaderWidth = control.GetRowMargin();
@@ -238,27 +248,33 @@ namespace SheetReader.Wpf
                     var x = point.X + offsetX;
                     var y = point.Y + offsetY;
 
-                    var columnIndex = (x - rowsHeaderFullWidth) / colFullWidth;
-                    var rowIndex = (y - columnsHeaderFullHeight) / rowFullHeight;
-
-                    result.RowCol = new RowCol { ColumnIndex = (int)Math.Floor(columnIndex), RowIndex = (int)Math.Floor(rowIndex) };
-                    result.Cell = control.Sheet?.GetCell(result.RowCol);
-
-                    // independent from scrollviewer
-                    result.IsOverRowHeader = point.X >= 0 && point.X <= rowsHeaderFullWidth;
-                    result.IsOverColumnHeader = point.Y >= 0 && point.Y <= columnsHeaderFullHeight;
-
-                    if (!result.IsOverRowHeader)
+                    var columnIndex = GetColumnIndex(x - rowsHeaderFullWidth);
+                    if (columnIndex.HasValue)
                     {
-                        var mod = (point.X + offsetX - rowsHeaderFullWidth) % colFullWidth;
-                        const int tolerance = 4;
-                        if (mod < tolerance)
+                        var rowIndex = (y - columnsHeaderFullHeight) / rowFullHeight;
+
+                        result.RowCol = new RowCol { ColumnIndex = columnIndex.Value, RowIndex = (int)Math.Floor(rowIndex) };
+                        result.Cell = control.Sheet?.GetCell(result.RowCol);
+
+                        // independent from scrollviewer
+                        result.IsOverRowHeader = point.X >= 0 && point.X <= rowsHeaderFullWidth;
+                        result.IsOverColumnHeader = point.Y >= 0 && point.Y <= columnsHeaderFullHeight;
+
+                        if (!result.IsOverRowHeader)
                         {
-                            result.MovingColumnIndex = result.RowCol.ColumnIndex - 1;
-                        }
-                        else if ((colFullWidth - mod) < tolerance)
-                        {
-                            result.MovingColumnIndex = result.RowCol.ColumnIndex;
+                            const int tolerance = 4;
+                            var colSeparatorX = rowsHeaderFullWidth;
+                            for (var i = 0; i < control._columnSettings.Count; i++)
+                            {
+                                colSeparatorX += control._columnSettings[i].Width;
+                                if ((x + tolerance) >= colSeparatorX && (x - tolerance) <= (colSeparatorX + lineSize))
+                                {
+                                    result.MovingColumnIndex = i;
+                                    break;
+                                }
+
+                                colSeparatorX += lineSize;
+                            }
                         }
                     }
                 }
@@ -336,7 +352,7 @@ namespace SheetReader.Wpf
                 var firstDrawnRowIndex = Math.Max((int)((offsetY - columnsHeaderFullHeight) / rowFullHeight), 0);
                 var lastDrawnRowIndex = Math.Max(Math.Min((int)((offsetY - columnsHeaderFullHeight + viewHeight) / rowFullHeight), control.Sheet.LastRowIndex!.Value), firstDrawnRowIndex);
 
-                Log("col:" + firstDrawnColumnIndex + " => " + lastDrawnColumnIndex + " row:" + firstDrawnRowIndex + " => " + lastDrawnRowIndex);
+                //Log("col:" + firstDrawnColumnIndex + " => " + lastDrawnColumnIndex + " row:" + firstDrawnRowIndex + " => " + lastDrawnRowIndex);
 
                 // compute first col X
                 var startCurrentColX = rowsHeaderWidth + lineSize / 2;

@@ -251,55 +251,27 @@ namespace SheetReader.Wpf
                     }
                     break;
 
+                case Key.A:
+                    if (Keyboard.Modifiers.HasFlag(ModifierKeys.Control))
+                    {
+                        Selection.SelectAll();
+                    }
+                    break;
+
                 case Key.Right:
-                    if (Keyboard.Modifiers.HasFlag(ModifierKeys.Shift))
-                    {
-                        Selection.LastColumnMoveWasNegative = false;
-                        Selection.ColumnCount++;
-                    }
-                    else
-                    {
-                        Selection.LastColumnMoveWasNegative = false;
-                        Selection.ColumnCount = 1;
-                        Selection.ColumnIndex++;
-                    }
+                    Selection.MoveHorizontally(1, Keyboard.Modifiers.HasFlag(ModifierKeys.Shift));
                     break;
 
                 case Key.Left:
-                    if (Keyboard.Modifiers.HasFlag(ModifierKeys.Shift))
-                    {
-                        Selection.ColumnCount--;
-                    }
-                    else
-                    {
-                        Selection.LastColumnMoveWasNegative = false;
-                        Selection.ColumnCount = 1;
-                        Selection.ColumnIndex--;
-                    }
+                    Selection.MoveHorizontally(-1, Keyboard.Modifiers.HasFlag(ModifierKeys.Shift));
                     break;
 
                 case Key.Down:
-                    if (Keyboard.Modifiers.HasFlag(ModifierKeys.Shift))
-                    {
-                        Selection.RowCount++;
-                    }
-                    else
-                    {
-                        Selection.RowCount = 1;
-                        Selection.RowIndex++;
-                    }
+                    Selection.MoveVertically(1, Keyboard.Modifiers.HasFlag(ModifierKeys.Shift));
                     break;
 
                 case Key.Up:
-                    if (Keyboard.Modifiers.HasFlag(ModifierKeys.Shift))
-                    {
-                        Selection.RowCount--;
-                    }
-                    else
-                    {
-                        Selection.RowCount = 1;
-                        Selection.RowIndex--;
-                    }
+                    Selection.MoveVertically(-1, Keyboard.Modifiers.HasFlag(ModifierKeys.Shift));
                     break;
             }
         }
@@ -675,25 +647,37 @@ namespace SheetReader.Wpf
                 drawingContext.Pop();
 
                 var selectionBrush = _control.SelectionBrush;
-                if (selectionBrush != null && (_control.Selection.RowCount > 0 || _control.Selection.ColumnCount > 0))
+                if (selectionBrush != null)
                 {
                     var pen = new Pen(selectionBrush, context.LineSize.Value * 3);
 
+                    var y = context.RowFullHeight.Value + context.RowFullHeight.Value * _control.Selection.RowIndex;
                     var x = context.RowFullMargin.Value;
                     for (var i = 0; i < _control.Selection.ColumnIndex; i++)
                     {
                         x += _control._columnSettings[i].Width + context.LineSize.Value;
                     }
 
-                    var y = context.RowFullHeight.Value + context.RowFullHeight.Value * _control.Selection.RowIndex;
+                    var w = _control._columnSettings[_control.Selection.ColumnIndex].Width + context.LineSize.Value;
 
-                    var w = 0.0;
-                    for (var i = 0; i < _control.Selection.ColumnCount; i++)
+                    if (_control.Selection.ColumnExtension < 0)
                     {
-                        w += _control._columnSettings[_control.Selection.ColumnIndex + i].Width + context.LineSize.Value;
+                        for (var i = 1; i <= -_control.Selection.ColumnExtension; i++)
+                        {
+                            var width = _control._columnSettings[_control.Selection.ColumnIndex - i].Width + context.LineSize.Value;
+                            x -= width;
+                            w += width;
+                        }
+                    }
+                    else
+                    {
+                        for (var i = 1; i <= _control.Selection.ColumnExtension; i++)
+                        {
+                            w += _control._columnSettings[_control.Selection.ColumnIndex + i].Width + context.LineSize.Value;
+                        }
                     }
 
-                    var h = _control.Selection.RowCount * context.RowFullHeight.Value;
+                    var h = (_control.Selection.RowExtension + 1) * context.RowFullHeight.Value;
                     var rc = new Rect(x, y, w, h);
                     drawingContext.DrawRectangle(null, pen, rc);
                 }

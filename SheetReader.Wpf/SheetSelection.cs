@@ -2,125 +2,162 @@
 
 namespace SheetReader.Wpf
 {
-    public sealed class SheetSelection
+    public class SheetSelection
     {
-        private readonly SheetControl _control;
-        private int _rowIndex;
-        private int _rowCount = 1;
-        private int _columnIndex;
-        private int _columnCount = 1;
-        private bool _lastRowMoveWasNegative;
-
-        internal SheetSelection(SheetControl control)
+        public SheetSelection(SheetControl control)
         {
-            _control = control;
+            ArgumentNullException.ThrowIfNull(control);
+            Control = control;
         }
 
-        public bool LastColumnMoveWasNegative { get; set; }
+        public SheetControl Control { get; }
+        public virtual int RowIndex { get; protected set; }
+        public virtual int ColumnIndex { get; protected set; }
+        public virtual int RowExtension { get; protected set; }
+        public virtual int ColumnExtension { get; protected set; }
 
-        public int RowIndex
+        public virtual void SelectRow(int rowIndex)
         {
-            get => _rowIndex;
-            set
+            if (Control.Sheet == null || !Control.Sheet.LastRowIndex.HasValue)
+                return;
+
+            if (rowIndex < 0 || rowIndex >= Control.Sheet.LastRowIndex.Value)
+                return;
+
+            var changed = false;
+            if (RowIndex != rowIndex)
             {
-                if (value < 0 || _control.Sheet == null || !_control.Sheet.LastRowIndex.HasValue)
-                    return;
+                changed = true;
+                RowIndex = 0;
+            }
 
-                if (value > _control.Sheet.LastRowIndex)
-                    return;
+            if (RowExtension != Control.Sheet.LastRowIndex.Value)
+            {
+                RowExtension = Control.Sheet.LastRowIndex.Value;
+            }
 
-                if (_rowIndex == value)
-                    return;
-
-                _rowIndex = value;
-                var max = _control.Sheet.LastRowIndex.Value - _rowIndex + 1;
-                _rowCount = Math.Max(Math.Min(_rowCount, max), 1);
-                _control.OnSelectionChanged();
+            if (changed)
+            {
+                Control.OnSelectionChanged();
             }
         }
 
-        public int ColumnIndex
+        public virtual void SelectColumn(int columnIndex)
         {
-            get => _columnIndex;
-            set
+            if (Control.Sheet == null || !Control.Sheet.LastColumnIndex.HasValue)
+                return;
+
+            if (columnIndex < 0 || columnIndex >= Control.Sheet.LastColumnIndex.Value)
+                return;
+
+            var changed = false;
+            if (ColumnIndex != columnIndex)
             {
-                if (value < 0 || _control.Sheet == null || !_control.Sheet.LastColumnIndex.HasValue)
-                    return;
+                changed = true;
+                ColumnIndex = 0;
+            }
 
-                if (value > _control.Sheet.LastColumnIndex)
-                    return;
+            if (ColumnExtension != Control.Sheet.LastColumnIndex.Value)
+            {
+                ColumnExtension = Control.Sheet.LastColumnIndex.Value;
+            }
 
-                if (_columnIndex == value)
-                    return;
-
-                _columnIndex = value;
-                var max = _control.Sheet.LastColumnIndex.Value - _columnIndex + 1;
-                _columnCount = Math.Max(Math.Min(_columnCount, max), 1);
-                _control.OnSelectionChanged();
+            if (changed)
+            {
+                Control.OnSelectionChanged();
             }
         }
 
-        public int RowCount
+        public virtual void SelectAll()
         {
-            get => _rowCount;
-            set
+            if (Control.Sheet == null || !Control.Sheet.LastRowIndex.HasValue || !Control.Sheet.LastColumnIndex.HasValue)
+                return;
+
+            var changed = false;
+            if (RowIndex != 0)
             {
-                if (value <= 0 || _control.Sheet == null || !_control.Sheet.LastRowIndex.HasValue)
-                    return;
+                changed = true;
+                RowIndex = 0;
+            }
 
-                if (value > _control.Sheet.LastRowIndex)
-                    return;
+            if (ColumnIndex != 0)
+            {
+                changed = true;
+                ColumnIndex = 0;
+            }
 
-                var max = _control.Sheet.LastRowIndex.Value - _rowIndex + 1;
-                value = Math.Max(Math.Min(value, max), 1);
-                if (_rowCount == value)
-                    return;
+            if (RowExtension != Control.Sheet.LastRowIndex.Value)
+            {
+                RowExtension = Control.Sheet.LastRowIndex.Value;
+            }
 
-                _rowCount = value;
-                _control.OnSelectionChanged();
+            if (ColumnExtension != Control.Sheet.LastColumnIndex.Value)
+            {
+                ColumnExtension = Control.Sheet.LastColumnIndex.Value;
+            }
+
+            if (changed)
+            {
+                Control.OnSelectionChanged();
             }
         }
 
-        public int ColumnCount
+        public virtual void MoveHorizontally(int delta, bool extendSelection)
         {
-            get => _columnCount;
-            set
-            {
-                if (value < 0 || _control.Sheet == null || !_control.Sheet.LastColumnIndex.HasValue)
-                    return;
+            if (delta == 0 || Control.Sheet == null || !Control.Sheet.LastColumnIndex.HasValue)
+                return;
 
-                if (value == 0 || LastColumnMoveWasNegative)
+            var target = ColumnIndex + delta;
+            if (target < 0 || target > Control.Sheet.LastColumnIndex.Value)
+                return;
+
+            if (extendSelection)
+            {
+                if (delta < 0)
                 {
-                    var index = ColumnIndex;
-                    ColumnIndex--;
-                    if (ColumnIndex == index)
-                    {
-                        //ColumnIndex++;
-                        //value = _columnCount - 1;
-                        //LastColumnMoveWasNegative = false;
-                    }
-                    else
-                    {
-                        LastColumnMoveWasNegative = true;
-                        value = _columnCount + 1;
-                    }
+                    ColumnExtension--;
                 }
                 else
                 {
-                    LastColumnMoveWasNegative = false;
+                    ColumnExtension++;
                 }
-
-                if (value > _control.Sheet.LastColumnIndex)
-                    return;
-
-                var max = _control.Sheet.LastColumnIndex.Value - _columnIndex + 1;
-                value = Math.Max(Math.Min(value, max), 1);
-                if (_columnCount == value)
-                    return;
-
-                _columnCount = value;
-                _control.OnSelectionChanged();
             }
+            else
+            {
+                ColumnIndex = target;
+                ColumnExtension = 0;
+                RowExtension = 0;
+            }
+            Control.OnSelectionChanged();
+        }
+
+        public virtual void MoveVertically(int delta, bool extendSelection)
+        {
+            if (delta == 0 || Control.Sheet == null || !Control.Sheet.LastRowIndex.HasValue)
+                return;
+
+            var target = RowIndex + delta;
+            if (target < 0 || target > Control.Sheet.LastRowIndex.Value)
+                return;
+
+            if (extendSelection)
+            {
+                if (delta < 0)
+                {
+                    RowExtension--;
+                }
+                else
+                {
+                    RowExtension++;
+                }
+            }
+            else
+            {
+                RowIndex = target;
+                RowExtension = 0;
+                ColumnExtension = 0;
+            }
+            Control.OnSelectionChanged();
         }
     }
 }

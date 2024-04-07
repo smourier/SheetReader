@@ -7,9 +7,16 @@ namespace SheetReader
     // this class is for loading a workbook (stateful) vs enumerating it (stateless)
     public class BookDocument
     {
-        private readonly List<BookDocumentSheet> _sheets = [];
+        private readonly IList<BookDocumentSheet> _sheets;
 
-        public IReadOnlyList<BookDocumentSheet> Sheets => _sheets;
+        public BookDocument()
+        {
+            _sheets = CreateSheets();
+            if (_sheets == null)
+                throw new InvalidOperationException();
+        }
+
+        public IList<BookDocumentSheet> Sheets => _sheets;
 
         public virtual void Load(string filePath, BookFormat? format = null)
         {
@@ -43,5 +50,6 @@ namespace SheetReader
 
         protected virtual Book CreateBook() => new();
         protected virtual BookDocumentSheet CreateSheet(Sheet sheet) => new(sheet);
+        protected virtual IList<BookDocumentSheet> CreateSheets() => [];
     }
 }

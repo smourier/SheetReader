@@ -1,4 +1,6 @@
 ﻿using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
@@ -99,7 +101,7 @@ namespace SheetReader.Wpf.Test
                 try
                 {
                     var format = BookFormat.GetFromFileExtension(Path.GetExtension(filePath)) ?? new CsvBookFormat();
-                    var book = new BookDocument();
+                    var book = new ConcurrentBookDocument();
                     book.Load(filePath, format);
                     foreach (var sheet in book.Sheets)
                     {
@@ -145,25 +147,44 @@ namespace SheetReader.Wpf.Test
         {
             var ctl = (SheetControl)sender;
             var result = ctl.HitTest(e.GetPosition(ctl));
-            if (result.IsOverRowHeader)
+            if (result.RowCol != null)
             {
-                status.Text = $"Row {result.RowCol!.RowIndex + 1}";
-                return;
-            }
+                if (result.IsOverRowHeader)
+                {
+                    status.Text = $"Row {result.RowCol.RowIndex + 1}";
+                    return;
+                }
 
-            if (result.IsOverColumnHeader && result.RowCol!.ColumnIndex <= ctl.Sheet.LastColumnIndex)
-            {
-                status.Text = $"Column {Row.GetExcelColumnName(result.RowCol!.ColumnIndex)} ({result.RowCol.ColumnIndex})";
-                return;
-            }
+                if (result.IsOverColumnHeader)
+                {
+                    status.Text = $"Column {Row.GetExcelColumnName(result.RowCol.ColumnIndex)} ({result.RowCol.ColumnIndex})";
+                    return;
+                }
 
-            var cell = result.Cell;
-            if (cell != null)
-            {
-                status.Text = $"{Row.GetExcelColumnName(result.RowCol!.ColumnIndex)}{result.RowCol.RowIndex + 1}: {cell.Value}";
-                return;
+                var cell = result.Cell;
+                if (cell != null)
+                {
+                    status.Text = $"{result.RowCol.ExcelReference}: {cell.Value}";
+                    return;
+                }
             }
             status.Text = string.Empty;
+        }
+
+        private sealed class ConcurrentBookDocument : BookDocument
+        {
+            protected override BookDocumentSheet CreateSheet(Sheet sheet) => new ConcurrentBookDocumentSheet(sheet);
+        }
+
+        private sealed class ConcurrentBookDocumentSheet(Sheet sheet) : BookDocumentSheet(sheet)
+        {
+            protected override IDictionary<int, Column> CreateColumns() => new ConcurrentDictionary<int, Column>();
+            protected override IDictionary<int, BookDocumentRow> CreateRows() => new ConcurrentDictionary<int, BookDocumentRow>();
+        }
+
+        private sealed class ConcurentBookDocumentRow(Row row) : BookDocumentRow(row)
+        {
+            protected override IDictionary<int, BookDocumentCell> CreateCells() => new ConcurrentDictionary<int, BookDocumentCell>();
         }
     }
 }

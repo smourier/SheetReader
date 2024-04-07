@@ -5,12 +5,17 @@ namespace SheetReader
 {
     public class BookDocumentSheet
     {
-        private readonly Dictionary<int, BookDocumentRow> _rows = [];
-        private readonly Dictionary<int, Column> _columns = [];
+        private readonly IDictionary<int, BookDocumentRow> _rows;
+        private readonly IDictionary<int, Column> _columns;
 
         public BookDocumentSheet(Sheet sheet)
         {
             ArgumentNullException.ThrowIfNull(sheet);
+            _rows = CreateRows();
+            _columns = CreateColumns();
+            if (_rows == null || _columns == null)
+                throw new InvalidOperationException();
+
             Name = sheet.Name ?? string.Empty;
             IsHidden = !sheet.IsVisible;
 
@@ -51,12 +56,12 @@ namespace SheetReader
         public int? LastColumnIndex { get; }
         public int? FirstRowIndex { get; }
         public int? LastRowIndex { get; }
-        public IReadOnlyDictionary<int, BookDocumentRow> Rows => _rows;
-        public IReadOnlyDictionary<int, Column> Columns => _columns;
+        public IDictionary<int, BookDocumentRow> Rows => _rows;
+        public IDictionary<int, Column> Columns => _columns;
 
         public override string ToString() => Name;
 
-        public Cell? GetCell(RowCol? rowCol)
+        public BookDocumentCell? GetCell(RowCol? rowCol)
         {
             if (rowCol == null)
                 return null;
@@ -64,7 +69,7 @@ namespace SheetReader
             return GetCell(rowCol.RowIndex, rowCol.ColumnIndex);
         }
 
-        public virtual Cell? GetCell(int rowIndex, int columnIndex)
+        public virtual BookDocumentCell? GetCell(int rowIndex, int columnIndex)
         {
             if (!_rows.TryGetValue(rowIndex, out var row))
                 return null;
@@ -74,5 +79,7 @@ namespace SheetReader
         }
 
         protected virtual BookDocumentRow CreateRow(Row row) => new(row);
+        protected virtual IDictionary<int, Column> CreateColumns() => new Dictionary<int, Column>();
+        protected virtual IDictionary<int, BookDocumentRow> CreateRows() => new Dictionary<int, BookDocumentRow>();
     }
 }

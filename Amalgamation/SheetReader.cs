@@ -25,22 +25,19 @@ SOFTWARE.
 AssemblyVersion: 2.0.0.0
 AssemblyFileVersion: 2.0.0.0
 */
-global using global::System.Collections.Generic;
-global using global::System.IO;
-global using global::System.Linq;
-global using global::System.Net.Http;
-global using global::System.Threading.Tasks;
-global using global::System.Threading;
-global using global::System;
 using Extensions = SheetReader.Utilities.Extensions;
 using SheetReader.Utilities;
+using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.IO.Compression;
+using System.IO;
+using System.Linq;
 using System.Text;
 using System.Xml.Linq;
 using System.Xml.XPath;
 using System.Xml;
+using System;
 
 namespace SheetReader
 {
@@ -363,14 +360,6 @@ namespace SheetReader
             }
         }
 
-        protected class XlsxColumn : Column
-        {
-            public XlsxColumn(int index)
-            {
-                Index = index;
-            }
-        }
-
         protected class XlsxSheet : Sheet
         {
             public XlsxSheet(XlsxBook book, XElement element, XmlReader reader)
@@ -392,7 +381,7 @@ namespace SheetReader
             public XlsxBook Book { get; }
             public XElement Element { get; }
             public XmlReader Reader { get; }
-            public IDictionary<int, XlsxColumn> Columns { get; } = new Dictionary<int, XlsxColumn>();
+            public IDictionary<int, Column> Columns { get; } = new Dictionary<int, Column>();
 
             public override IEnumerable<Column> EnumerateColumns() => Columns.Values.OrderBy(c => c.Index);
 
@@ -437,7 +426,6 @@ namespace SheetReader
             }
 
             protected virtual XlsxRow CreateRow() => new(this);
-            protected virtual internal XlsxColumn CreateColumn(XlsxCell cell) => new(cell?.ColumnIndex ?? 0);
             protected virtual internal XlsxCell CreateCell(XlsxRow row) => new(row);
         }
 
@@ -498,7 +486,8 @@ namespace SheetReader
                 {
                     if (!row.Sheet.Columns.ContainsKey(ColumnIndex))
                     {
-                        var column = row.Sheet.CreateColumn(this);
+                        var column = row.Sheet.CreateColumn();
+                        column.Index = ColumnIndex;
                         row.Sheet.Columns.Add(ColumnIndex, column);
                     }
                 }
@@ -643,7 +632,6 @@ namespace SheetReader
             }
 
             protected virtual CsvRow CreateRow(IEnumerator<string> cells) => new(cells);
-            protected virtual Column CreateColumn() => new();
 
             protected virtual void Dispose(bool disposing)
             {
@@ -683,9 +671,16 @@ namespace SheetReader
     // this class is for loading a workbook (stateful) vs enumerating it (stateless)
     public class BookDocument
     {
-        private readonly List<BookDocumentSheet> _sheets = [];
+        private readonly IList<BookDocumentSheet> _sheets;
 
-        public IReadOnlyList<BookDocumentSheet> Sheets => _sheets;
+        public BookDocument()
+        {
+            _sheets = CreateSheets();
+            if (_sheets == null)
+                throw new InvalidOperationException();
+        }
+
+        public IList<BookDocumentSheet> Sheets => _sheets;
 
         public virtual void Load(string filePath, BookFormat? format = null)
         {
@@ -703,18 +698,47 @@ namespace SheetReader
         {
             ArgumentNullException.ThrowIfNull(stream);
             _sheets.Clear();
-            var book = new Book();
-            foreach (var sheet in book.EnumerateSheets(stream, format))
+            var book = CreateBook();
+            if (book != null)
             {
-                var docSheet = CreateSheet(sheet);
-                if (docSheet != null)
+                foreach (var sheet in book.EnumerateSheets(stream, format))
                 {
-                    _sheets.Add(docSheet);
+                    var docSheet = CreateSheet(sheet);
+                    if (docSheet != null)
+                    {
+                        _sheets.Add(docSheet);
+                    }
                 }
             }
         }
 
+        protected virtual Book CreateBook() => new();
         protected virtual BookDocumentSheet CreateSheet(Sheet sheet) => new(sheet);
+        protected virtual IList<BookDocumentSheet> CreateSheets() => [];
+    }
+}
+
+namespace SheetReader
+{
+    // minimize memory
+    public class BookDocumentCell
+    {
+        public BookDocumentCell(Cell cell)
+        {
+            ArgumentNullException.ThrowIfNull(cell);
+            Value = cell.Value;
+        }
+
+        public virtual object? Value { get; }
+
+        public override string ToString() => Value?.ToString() ?? string.Empty;
+    }
+}
+
+namespace SheetReader
+{
+    public class BookDocumentCellError(Cell cell) : BookDocumentCell(cell)
+    {
     }
 }
 
@@ -722,16 +746,24 @@ namespace SheetReader
 {
     public class BookDocumentRow
     {
-        private readonly Dictionary<int, Cell> _cells = [];
+        private readonly IDictionary<int, BookDocumentCell> _cells;
 
         public BookDocumentRow(Row row)
         {
             ArgumentNullException.ThrowIfNull(row);
+            _cells = CreateCells();
+            if (_cells == null)
+                throw new InvalidOperationException();
+
             RowIndex = row.Index;
             IsHidden = !row.IsVisible;
             foreach (var cell in row.EnumerateCells())
             {
-                _cells[cell.ColumnIndex] = cell;
+                var bdCell = CreateCell(cell);
+                if (bdCell == null)
+                    continue;
+
+                _cells[cell.ColumnIndex] = CreateCell(cell);
 
                 if (LastCellIndex == null || row.Index > LastCellIndex)
                 {
@@ -749,7 +781,14 @@ namespace SheetReader
         public bool IsHidden { get; }
         public int? FirstCellIndex { get; }
         public int? LastCellIndex { get; }
-        public IReadOnlyDictionary<int, Cell> Cells => _cells;
+        public IDictionary<int, BookDocumentCell> Cells => _cells;
+
+        protected virtual IDictionary<int, BookDocumentCell> CreateCells() => new Dictionary<int, BookDocumentCell>();
+        protected virtual BookDocumentCell CreateCell(Cell cell)
+        {
+            ArgumentNullException.ThrowIfNull(cell);
+            return cell.IsError ? new BookDocumentCellError(cell) : new BookDocumentCell(cell);
+        }
 
         public override string ToString() => RowIndex.ToString();
     }
@@ -759,12 +798,17 @@ namespace SheetReader
 {
     public class BookDocumentSheet
     {
-        private readonly Dictionary<int, BookDocumentRow> _rows = [];
-        private readonly Dictionary<int, Column> _columns = [];
+        private readonly IDictionary<int, BookDocumentRow> _rows;
+        private readonly IDictionary<int, Column> _columns;
 
         public BookDocumentSheet(Sheet sheet)
         {
             ArgumentNullException.ThrowIfNull(sheet);
+            _rows = CreateRows();
+            _columns = CreateColumns();
+            if (_rows == null || _columns == null)
+                throw new InvalidOperationException();
+
             Name = sheet.Name ?? string.Empty;
             IsHidden = !sheet.IsVisible;
 
@@ -805,18 +849,20 @@ namespace SheetReader
         public int? LastColumnIndex { get; }
         public int? FirstRowIndex { get; }
         public int? LastRowIndex { get; }
-        public IReadOnlyDictionary<int, BookDocumentRow> Rows => _rows;
-        public IReadOnlyDictionary<int, Column> Columns => _columns;
+        public IDictionary<int, BookDocumentRow> Rows => _rows;
+        public IDictionary<int, Column> Columns => _columns;
 
         public override string ToString() => Name;
 
-        public Cell? GetCell(RowCol rowCol)
+        public BookDocumentCell? GetCell(RowCol? rowCol)
         {
-            ArgumentNullException.ThrowIfNull(rowCol);
+            if (rowCol == null)
+                return null;
+
             return GetCell(rowCol.RowIndex, rowCol.ColumnIndex);
         }
 
-        public virtual Cell? GetCell(int rowIndex, int columnIndex)
+        public virtual BookDocumentCell? GetCell(int rowIndex, int columnIndex)
         {
             if (!_rows.TryGetValue(rowIndex, out var row))
                 return null;
@@ -826,6 +872,8 @@ namespace SheetReader
         }
 
         protected virtual BookDocumentRow CreateRow(Row row) => new(row);
+        protected virtual IDictionary<int, Column> CreateColumns() => new Dictionary<int, Column>();
+        protected virtual IDictionary<int, BookDocumentRow> CreateRows() => new Dictionary<int, BookDocumentRow>();
     }
 }
 
@@ -1208,6 +1256,7 @@ namespace SheetReader
         public virtual int RowIndex { get; set; }
         public virtual int ColumnIndex { get; set; }
 
+        public string ExcelReference => Row.GetExcelColumnName(ColumnIndex) + (RowIndex + 1).ToString();
         public override string ToString() => RowIndex + "," + ColumnIndex;
     }
 }
@@ -1221,6 +1270,8 @@ namespace SheetReader
 
         public abstract IEnumerable<Column> EnumerateColumns();
         public abstract IEnumerable<Row> EnumerateRows();
+
+        protected internal virtual Column CreateColumn() => new();
 
         public override string ToString() => Name ?? string.Empty;
     }
@@ -1282,7 +1333,6 @@ namespace SheetReader
         public override BookFormatType Type => BookFormatType.Xlsx;
     }
 }
-
 
 namespace SheetReader.Utilities
 {

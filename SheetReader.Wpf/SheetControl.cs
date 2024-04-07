@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Globalization;
 using System.Runtime.CompilerServices;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -60,15 +61,21 @@ namespace SheetReader.Wpf
             typeof(SheetControl),
             new UIPropertyMetadata(TextTrimming.CharacterEllipsis));
 
+        public static readonly DependencyProperty CellPaddingProperty = DependencyProperty.Register(nameof(CellPadding),
+            typeof(Thickness),
+            typeof(SheetControl),
+            new UIPropertyMetadata(new Thickness(5)));
+
         public BookDocumentSheet Sheet { get => (BookDocumentSheet)GetValue(SheetProperty); set => SetValue(SheetProperty, value); }
-        public double ColumnWidth { get { return (double)GetValue(ColumnWidthProperty); } set { SetValue(ColumnWidthProperty, value); } }
-        public double RowMargin { get { return (double)GetValue(RowMarginProperty); } set { SetValue(RowMarginProperty, value); } }
-        public double RowHeight { get { return (double)GetValue(RowHeightProperty); } set { SetValue(RowHeightProperty, value); } }
+        public double ColumnWidth { get => (double)GetValue(ColumnWidthProperty); set => SetValue(ColumnWidthProperty, value); }
+        public double RowMargin { get => (double)GetValue(RowMarginProperty); set => SetValue(RowMarginProperty, value); }
+        public double RowHeight { get => (double)GetValue(RowHeightProperty); set => SetValue(RowHeightProperty, value); }
         public double LineSize { get => (double)GetValue(LineSizeProperty); set => SetValue(LineSizeProperty, value); }
-        public Brush LineBrush { get { return (Brush)GetValue(LineBrushProperty); } set { SetValue(LineBrushProperty, value); } }
-        public Brush HeaderBrush { get { return (Brush)GetValue(HeaderBrushProperty); } set { SetValue(HeaderBrushProperty, value); } }
-        public TextAlignment TextAlignment { get { return (TextAlignment)GetValue(TextAlignmentProperty); } set { SetValue(TextAlignmentProperty, value); } }
-        public TextTrimming TextTrimming { get { return (TextTrimming)GetValue(TextTrimmingProperty); } set { SetValue(TextTrimmingProperty, value); } }
+        public Brush LineBrush { get => (Brush)GetValue(LineBrushProperty); set => SetValue(LineBrushProperty, value); }
+        public Brush HeaderBrush { get => (Brush)GetValue(HeaderBrushProperty); set => SetValue(HeaderBrushProperty, value); }
+        public TextAlignment TextAlignment { get => (TextAlignment)GetValue(TextAlignmentProperty); set => SetValue(TextAlignmentProperty, value); }
+        public TextTrimming TextTrimming { get => (TextTrimming)GetValue(TextTrimmingProperty); set => SetValue(TextTrimmingProperty, value); }
+        public Thickness CellPadding { get => (Thickness)GetValue(CellPaddingProperty); set => SetValue(CellPaddingProperty, value); }
 
         private double GetRowHeight() => Math.Max(RowHeight, 10);
         private double GetRowMargin() => Math.Max(RowMargin, 10);
@@ -94,6 +101,49 @@ namespace SheetReader.Wpf
             ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(columnIndex, _columnSettings.Count);
             _columnSettings[columnIndex].Width = width;
             _grid?.InvalidateMeasure();
+            Log("colsize " + columnIndex + ": " + width);
+        }
+
+        public virtual void SetColumnAutoSize(int columnIndex)
+        {
+            var typeface = new Typeface(FontFamily, FontStyle, FontWeight, FontStretch);
+            SetColumnAutoSize(columnIndex, Sheet?.Rows.Values, typeface, FontSize, Foreground, TextTrimming, VisualTreeHelper.GetDpi(this).PixelsPerDip);
+        }
+
+        private void SetColumnAutoSize(int columnIndex, IEnumerable<BookDocumentRow>? rows, Typeface typeface, double fontSize, Brush foreground, TextTrimming textTrimming, double pixelsPerDip)
+        {
+            if (rows == null)
+                return;
+
+            double? autoSize = null;
+            foreach (var row in rows)
+            {
+                if (row.Cells.TryGetValue(columnIndex, out var cell))
+                {
+                    var text = string.Format("{0}", cell.Value);
+                    if (!string.IsNullOrEmpty(text))
+                    {
+                        var ft = new FormattedText(text, CultureInfo.CurrentCulture, FlowDirection.LeftToRight, typeface, fontSize, foreground, pixelsPerDip)
+                        {
+                            Trimming = textTrimming,
+                            MaxLineCount = 1
+                        };
+
+                        if (!autoSize.HasValue || ft.WidthIncludingTrailingWhitespace > autoSize)
+                        {
+                            autoSize = ft.WidthIncludingTrailingWhitespace;
+                        }
+                    }
+                }
+            }
+
+            if (autoSize.HasValue)
+            {
+                Dispatcher.BeginInvoke(() =>
+                {
+                    SetColumnSize(columnIndex, autoSize.Value);
+                });
+            }
         }
 
         protected virtual void OnSheetChanged()
@@ -158,36 +208,21 @@ namespace SheetReader.Wpf
                 var sheet = Sheet;
                 if (sheet != null)
                 {
+                    var typeface = new Typeface(FontFamily, FontStyle, FontWeight, FontStretch);
+                    var fg = Foreground;
+                    var fs = FontSize;
+                    var tt = TextTrimming;
+                    var ppd = VisualTreeHelper.GetDpi(this).PixelsPerDip;
                     var result = HitTest(e.GetPosition(_scrollViewer));
                     if (result.MovingColumnIndex.HasValue)
                     {
-                        var typeFace = new Typeface(FontFamily, FontStyle, FontWeight, FontStretch);
-                        var dpi = VisualTreeHelper.GetDpi(this);
-                        double? autoSize = null;
-                        foreach (var kv in sheet.Rows)
+                        for (var i = result.MovingColumnIndex.Value; i <= sheet.LastColumnIndex; i++)
                         {
-                            if (kv.Value.Cells.TryGetValue(result.MovingColumnIndex.Value, out var cell))
+                            var j = i;
+                            Task.Run(() =>
                             {
-                                var text = string.Format("{0}", cell.Value);
-                                if (!string.IsNullOrEmpty(text))
-                                {
-                                    var ft = new FormattedText(text, CultureInfo.CurrentCulture, FlowDirection.LeftToRight, typeFace, FontSize, Foreground, dpi.PixelsPerDip)
-                                    {
-                                        Trimming = TextTrimming,
-                                        MaxLineCount = 1
-                                    };
-
-                                    if (!autoSize.HasValue || ft.WidthIncludingTrailingWhitespace > autoSize)
-                                    {
-                                        autoSize = ft.WidthIncludingTrailingWhitespace;
-                                    }
-                                }
-                            }
-                        }
-
-                        if (autoSize.HasValue)
-                        {
-                            SetColumnSize(result.MovingColumnIndex.Value, autoSize.Value);
+                                SetColumnAutoSize(j, sheet.Rows.Values, typeface, fs, fg, tt, ppd);
+                            });
                         }
                     }
                 }
@@ -269,8 +304,14 @@ namespace SheetReader.Wpf
         {
             private bool IsSheetVisible() => control.Sheet != null && control.Sheet.Columns.Count > 0 && control.Sheet.Rows.Count > 0 && control._scrollViewer != null;
 
+            private SheetControlHitTestResult? _lastResult;
+            private Point? _lastResultPoint;
+
             public SheetControlHitTestResult HitTest(Point point)
             {
+                if (_lastResult != null && _lastResultPoint != null && _lastResultPoint == point)
+                    return _lastResult;
+
                 var result = new SheetControlHitTestResult();
                 if (IsSheetVisible())
                 {
@@ -288,17 +329,24 @@ namespace SheetReader.Wpf
                     var x = point.X + offsetX;
                     var y = point.Y + offsetY;
 
-                    var columnIndex = GetColumnIndex(x - rowsHeaderFullWidth);
-                    if (columnIndex.HasValue)
+                    var rowIndex = (int)Math.Floor((y - columnsHeaderFullHeight) / rowFullHeight);
+                    if (rowIndex >= -1 && rowIndex <= control.Sheet.LastRowIndex)
                     {
-                        var rowIndex = (y - columnsHeaderFullHeight) / rowFullHeight;
-
-                        result.RowCol = new RowCol { ColumnIndex = columnIndex.Value, RowIndex = (int)Math.Floor(rowIndex) };
-                        result.Cell = control.Sheet?.GetCell(result.RowCol);
+                        var columnIndex = GetColumnIndex(x - rowsHeaderFullWidth, control._scrollViewer!.ExtentWidth, true);
 
                         // independent from scrollviewer
                         result.IsOverRowHeader = point.X >= 0 && point.X <= rowsHeaderFullWidth;
                         result.IsOverColumnHeader = point.Y >= 0 && point.Y <= columnsHeaderFullHeight;
+
+                        if (columnIndex >= 0 || rowIndex >= 0)
+                        {
+                            result.RowCol = new RowCol { ColumnIndex = columnIndex ?? -1, RowIndex = rowIndex };
+                        }
+
+                        if (!result.IsOverColumnHeader && !result.IsOverRowHeader && result.RowCol != null)
+                        {
+                            result.Cell = control.Sheet?.GetCell(result.RowCol);
+                        }
 
                         if (!result.IsOverRowHeader)
                         {
@@ -317,7 +365,12 @@ namespace SheetReader.Wpf
                             }
                         }
                     }
+
+                    Log("hit: " + result.RowCol + " (" + result.RowCol?.ExcelReference + ") row:" + result.IsOverRowHeader + " column:" + result.IsOverColumnHeader + " moving:" + result.MovingColumnIndex);
                 }
+
+                _lastResultPoint = point;
+                _lastResult = result;
                 return result;
             }
 
@@ -342,21 +395,29 @@ namespace SheetReader.Wpf
                 return new Size(columnsWidth, columnsHeaderFullHeight + rowFullHeight * (control.Sheet.LastRowIndex!.Value + 1));
             }
 
-            private int? GetColumnIndex(double x)
+            private int? GetColumnIndex(double x, double maxWidth, bool allowReturnNull)
             {
+                if (allowReturnNull && x < 0)
+                    return -1;
+
                 var lineSize = control.GetLineSize();
-                var colWidth = lineSize;
+                var columnsWidth = lineSize;
                 foreach (var column in control._columnSettings)
                 {
-                    colWidth += column.Width + lineSize;
-                    if (x < colWidth)
+                    columnsWidth += column.Width + lineSize;
+                    if (columnsWidth > maxWidth)
+                        return column.Column.Index;
+
+                    if (x < columnsWidth)
                         return column.Column.Index;
                 }
-                return control.Sheet.LastColumnIndex;
+                return allowReturnNull ? null : control.Sheet.LastColumnIndex;
             }
 
             protected override void OnRender(DrawingContext drawingContext)
             {
+                _lastResult = null;
+                _lastResultPoint = null;
                 if (!IsSheetVisible())
                     return;
 
@@ -370,7 +431,7 @@ namespace SheetReader.Wpf
 
                 var lineSize = control.GetLineSize();
                 var pen = new Pen(control.LineBrush, lineSize);
-                var typeFace = new Typeface(control.FontFamily, control.FontStyle, control.FontWeight, control.FontStretch);
+                var typeface = new Typeface(control.FontFamily, control.FontStyle, control.FontWeight, control.FontStretch);
                 var dpi = VisualTreeHelper.GetDpi(this);
                 var rowHeight = control.GetRowHeight();
                 var rowFullHeight = rowHeight + lineSize;
@@ -383,8 +444,8 @@ namespace SheetReader.Wpf
                 var offsetY = control._scrollViewer.VerticalOffset;
                 //Log("offset:" + offsetX + " x " + offsetY + " view:" + viewWidth + " x " + viewHeight);
 
-                var firstDrawnColumnIndex = GetColumnIndex(offsetX - rowsHeaderFullWidth);
-                var lastDrawnColumnIndex = GetColumnIndex(offsetX + viewWidth - rowsHeaderFullWidth);
+                var firstDrawnColumnIndex = GetColumnIndex(offsetX - rowsHeaderFullWidth, control._scrollViewer.ExtentWidth, false);
+                var lastDrawnColumnIndex = GetColumnIndex(offsetX + viewWidth - rowsHeaderFullWidth, control._scrollViewer.ExtentWidth, false);
                 if (!firstDrawnColumnIndex.HasValue || !lastDrawnColumnIndex.HasValue)
                     return;
 
@@ -419,7 +480,7 @@ namespace SheetReader.Wpf
                             var text = string.Format(CultureInfo.CurrentCulture, "{0}", cell.Value);
                             if (!string.IsNullOrEmpty(text))
                             {
-                                var formattedCell = new FormattedText(text, CultureInfo.CurrentCulture, FlowDirection.LeftToRight, typeFace, control.FontSize, control.Foreground, dpi.PixelsPerDip)
+                                var formattedCell = new FormattedText(text, CultureInfo.CurrentCulture, FlowDirection.LeftToRight, typeface, control.FontSize, control.Foreground, dpi.PixelsPerDip)
                                 {
                                     Trimming = control.TextTrimming,
                                     MaxTextWidth = colWidth,
@@ -478,7 +539,7 @@ namespace SheetReader.Wpf
                 {
                     // draw row name
                     var name = (i + 1).ToString();
-                    var formattedRow = new FormattedText(name, CultureInfo.CurrentCulture, FlowDirection.LeftToRight, typeFace, control.FontSize, control.Foreground, dpi.PixelsPerDip)
+                    var formattedRow = new FormattedText(name, CultureInfo.CurrentCulture, FlowDirection.LeftToRight, typeface, control.FontSize, control.Foreground, dpi.PixelsPerDip)
                     {
                         MaxTextWidth = rowsHeaderWidth,
                         MaxLineCount = 1
@@ -508,7 +569,7 @@ namespace SheetReader.Wpf
                     // draw col name
                     var colWidth = control._columnSettings[i].Width;
                     var name = Row.GetExcelColumnName(i);
-                    var formattedCol = new FormattedText(name, CultureInfo.CurrentCulture, FlowDirection.LeftToRight, typeFace, control.FontSize, control.Foreground, dpi.PixelsPerDip)
+                    var formattedCol = new FormattedText(name, CultureInfo.CurrentCulture, FlowDirection.LeftToRight, typeface, control.FontSize, control.Foreground, dpi.PixelsPerDip)
                     {
                         MaxTextWidth = colWidth,
                         MaxLineCount = 1

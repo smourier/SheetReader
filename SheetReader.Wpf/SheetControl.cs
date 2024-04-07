@@ -169,6 +169,15 @@ namespace SheetReader.Wpf
             _grid?.InvalidateMeasure();
         }
 
+        protected virtual BookDocumentCellStyle GetCellStyle(GetStyleContext context, BookDocumentCell cell)
+        {
+            ArgumentNullException.ThrowIfNull(context);
+            if (cell is BookDocumentStyledCell styled && styled.Style != null)
+                return styled.Style;
+
+            return new BookDocumentCellStyle();
+        }
+
         public override void OnApplyTemplate()
         {
             base.OnApplyTemplate();
@@ -465,48 +474,37 @@ namespace SheetReader.Wpf
                 var cellsRect = new Rect(offsetX + rowsHeaderWidth, offsetY + columnsHeaderHeight, viewWidth - rowsHeaderWidth, viewHeight - columnsHeaderHeight);
                 drawingContext.PushClip(new RectangleGeometry(cellsRect));
 
+                var context = new GetStyleContext
+                {
+                    RowCol = new RowCol(),
+                    MaxLineCount = 1,
+                    PixelsPerDip = dpi.PixelsPerDip,
+                    Typeface = typeface,
+                    FontSize = control.FontSize,
+                    Foreground = control.Foreground,
+                    TextTrimming = control.TextTrimming,
+                };
                 var currentRowY = columnsHeaderHeight + lineSize / 2 + rowFullHeight * firstDrawnRowIndex;
                 for (var i = firstDrawnRowIndex; i <= lastDrawnRowIndex; i++)
                 {
                     if (!control.Sheet.Rows.TryGetValue(i, out var row))
                         continue;
 
+                    context.RowCol.RowIndex = i;
                     var ccx = startCurrentColX;
                     for (var j = firstDrawnColumnIndex.Value; j <= lastDrawnColumnIndex; j++)
                     {
                         var colWidth = control._columnSettings[j].Width;
+                        context.ColumnWidth = colWidth;
                         if (row.Cells.TryGetValue(j, out var cell))
                         {
-                            var text = string.Format(CultureInfo.CurrentCulture, "{0}", cell.Value);
-                            if (!string.IsNullOrEmpty(text))
+                            context.RowCol.RowIndex = j;
+                            var style = control.GetCellStyle(context, cell);
+                            var formattedCell = style.CreateCellFormattedText(context, cell);
+                            if (formattedCell != null)
                             {
-                                var formattedCell = new FormattedText(text, CultureInfo.CurrentCulture, FlowDirection.LeftToRight, typeface, control.FontSize, control.Foreground, dpi.PixelsPerDip)
-                                {
-                                    Trimming = control.TextTrimming,
-                                    MaxTextWidth = colWidth,
-                                    MaxLineCount = 1
-                                };
-
-                                double textOffsetX;
-                                switch (control.TextAlignment)
-                                {
-                                    case TextAlignment.Right:
-                                        textOffsetX = colWidth - formattedCell.Width;
-                                        break;
-
-                                    case TextAlignment.Center:
-                                    case TextAlignment.Justify:
-                                        textOffsetX = (colWidth - formattedCell.Width) / 2;
-                                        break;
-
-                                    //case TextAlignment.Left:
-                                    default:
-                                        textOffsetX = 0;
-                                        break;
-                                }
-
                                 var textOffsetY = (rowHeight - formattedCell.Height) / 2; // center vertically
-                                drawingContext.DrawText(formattedCell, new Point(ccx + textOffsetX + lineSize / 2, currentRowY + lineSize / 2 + textOffsetY));
+                                drawingContext.DrawText(formattedCell, new Point(ccx + lineSize / 2, currentRowY + lineSize / 2 + textOffsetY));
                             }
                         }
                         ccx += colWidth + lineSize;

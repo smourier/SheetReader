@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Media;
 using Microsoft.Win32;
 using SheetReader.Wpf.Test.Utilities;
 
@@ -174,17 +175,77 @@ namespace SheetReader.Wpf.Test
         private sealed class ConcurrentBookDocument : BookDocument
         {
             protected override BookDocumentSheet CreateSheet(Sheet sheet) => new ConcurrentBookDocumentSheet(sheet);
+            public override bool IsThreadSafe => true;
         }
 
         private sealed class ConcurrentBookDocumentSheet(Sheet sheet) : BookDocumentSheet(sheet)
         {
             protected override IDictionary<int, Column> CreateColumns() => new ConcurrentDictionary<int, Column>();
             protected override IDictionary<int, BookDocumentRow> CreateRows() => new ConcurrentDictionary<int, BookDocumentRow>();
+            protected override BookDocumentRow CreateRow(Row row) => new ConcurentBookDocumentRow(row);
         }
 
         private sealed class ConcurentBookDocumentRow(Row row) : BookDocumentRow(row)
         {
             protected override IDictionary<int, BookDocumentCell> CreateCells() => new ConcurrentDictionary<int, BookDocumentCell>();
+
+            protected override BookDocumentCell CreateCell(Cell cell)
+            {
+                if (!cell.IsError)
+                {
+                    // sample style : green + aligned right when detecting number
+                    if (IsNumber(cell.Value) || IsParsableNumber(cell.Value))
+                        return new BookDocumentStyledCell(cell) { Style = NumberStyle.Instance };
+
+                    // sample style : orange + aligned right when detecting datetime
+                    if (IsDateTime(cell.Value) || IsParsableDateTime(cell.Value))
+                        return new BookDocumentStyledCell(cell) { Style = DateTimeStyle.Instance };
+                }
+
+                return base.CreateCell(cell);
+            }
+
+            private static bool IsNumber(object? value) =>
+                value is int || value is sbyte || value is short || value is long ||
+                value is uint || value is byte || value is ushort || value is ulong ||
+                value is float || value is double || value is decimal;
+
+            private static bool IsParsableNumber(object? value)
+            {
+                if (value == null) return false;
+                var svalue = string.Format("{0}", value);
+                if (string.IsNullOrEmpty(svalue)) return false;
+                if (long.TryParse(svalue, out _)) return true;
+                if (ulong.TryParse(svalue, out _)) return true;
+                if (double.TryParse(svalue, out _)) return true;
+                if (decimal.TryParse(svalue, out _)) return true;
+                return false;
+            }
+
+            private static bool IsDateTime(object? value) => value is DateTime || value is DateTimeOffset;
+            private static bool IsParsableDateTime(object? value)
+            {
+                if (value == null) return false;
+                var svalue = string.Format("{0}", value);
+                if (string.IsNullOrEmpty(svalue)) return false;
+                if (DateTime.TryParse(svalue, null, out _)) return true;
+                if (DateTimeOffset.TryParse(svalue, out _)) return true;
+                return false;
+            }
+        }
+
+        private sealed class NumberStyle : BookDocumentCellStyle
+        {
+            public static readonly NumberStyle Instance = new();
+            public override Brush? Foreground { get => Brushes.Green; }
+            public override TextAlignment? TextAlignment { get => System.Windows.TextAlignment.Right; }
+        }
+
+        private sealed class DateTimeStyle : BookDocumentCellStyle
+        {
+            public static readonly DateTimeStyle Instance = new();
+            public override Brush? Foreground { get => Brushes.Orange; }
+            public override TextAlignment? TextAlignment { get => System.Windows.TextAlignment.Right; }
         }
     }
 }

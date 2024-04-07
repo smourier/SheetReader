@@ -17,6 +17,7 @@ namespace SheetReader
         }
 
         public IList<BookDocumentSheet> Sheets => _sheets;
+        public virtual bool IsThreadSafe => false;
 
         public virtual void Load(string filePath, BookFormat? format = null)
         {

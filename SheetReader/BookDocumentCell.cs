@@ -12,6 +12,7 @@ namespace SheetReader
         }
 
         public virtual object? Value { get; }
+        public virtual bool IsError => this is BookDocumentCellError;
 
         public override string ToString() => Value?.ToString() ?? string.Empty;
     }

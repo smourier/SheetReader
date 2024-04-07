@@ -64,7 +64,10 @@
             </TabControl.ItemTemplate>
             <TabControl.ContentTemplate>
                 <DataTemplate>
-                    <smx:SheetControl MouseMove="SheetControl_MouseMove" Sheet="{Binding}" />
+                    <smx:SheetControl
+                        x:Name="sc"
+                        MouseMove="SheetControl_MouseMove"
+                        Sheet="{Binding}" />
                 </DataTemplate>
             </TabControl.ContentTemplate>
         </TabControl>

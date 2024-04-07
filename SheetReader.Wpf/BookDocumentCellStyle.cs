@@ -22,7 +22,7 @@ namespace SheetReader.Wpf
             return string.Format(CultureInfo.CurrentCulture, "{0}", cell.Value);
         }
 
-        public virtual FormattedText? CreateCellFormattedText(GetStyleContext context, BookDocumentCell cell)
+        public virtual FormattedText? CreateCellFormattedText(StyleContext context, BookDocumentCell cell)
         {
             ArgumentNullException.ThrowIfNull(context);
             ArgumentNullException.ThrowIfNull(cell);
@@ -44,7 +44,11 @@ namespace SheetReader.Wpf
                 formatted.MaxTextWidth = context.ColumnWidth.Value;
             }
 
-            if (context.RowHeight.HasValue)
+            if (context.CellHeight.HasValue)
+            {
+                formatted.MaxTextHeight = context.CellHeight.Value;
+            }
+            else if (context.RowHeight.HasValue)
             {
                 formatted.MaxTextHeight = context.RowHeight.Value;
             }

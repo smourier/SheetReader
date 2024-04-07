@@ -22,6 +22,7 @@ namespace SheetReader.Wpf.Test
             InitializeComponent();
             tc.ItemsSource = Sheets;
 
+            tc.Focus();
             Task.Run(() => Settings.Current.CleanRecentFiles());
         }
 
@@ -239,6 +240,7 @@ namespace SheetReader.Wpf.Test
             public static readonly NumberStyle Instance = new();
             public override Brush? Foreground { get => Brushes.Green; }
             public override TextAlignment? TextAlignment { get => System.Windows.TextAlignment.Right; }
+            public override string ToString() => "Number";
         }
 
         private sealed class DateTimeStyle : BookDocumentCellStyle
@@ -246,6 +248,12 @@ namespace SheetReader.Wpf.Test
             public static readonly DateTimeStyle Instance = new();
             public override Brush? Foreground { get => Brushes.Orange; }
             public override TextAlignment? TextAlignment { get => System.Windows.TextAlignment.Right; }
+            public override string ToString() => "DateTime";
+        }
+
+        private void sc_Loaded(object sender, RoutedEventArgs e)
+        {
+
         }
     }
 }

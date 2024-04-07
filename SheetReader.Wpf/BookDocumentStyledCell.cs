@@ -1,12 +1,7 @@
 ﻿namespace SheetReader.Wpf
 {
-    public class BookDocumentStyledCell : BookDocumentCell
+    public class BookDocumentStyledCell(Cell cell) : BookDocumentCell(cell)
     {
-        public BookDocumentStyledCell(Cell cell)
-            : base(cell)
-        {
-        }
-
         public BookDocumentCellStyle? Style { get; set; }
     }
 }

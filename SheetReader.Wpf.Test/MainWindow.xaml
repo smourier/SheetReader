@@ -70,7 +70,7 @@
         </TabControl>
         <StatusBar Grid.Row="2">
             <StatusBarItem>
-                <TextBlock x:Name="status" />
+                <TextBlock x:Name="status" MaxHeight="200" />
             </StatusBarItem>
         </StatusBar>
     </Grid>

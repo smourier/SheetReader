@@ -64,7 +64,7 @@ namespace SheetReader.Wpf
         public static readonly DependencyProperty CellPaddingProperty = DependencyProperty.Register(nameof(CellPadding),
             typeof(Thickness),
             typeof(SheetControl),
-            new UIPropertyMetadata(new Thickness(5)));
+            new UIPropertyMetadata(new Thickness(5, 0, 0, 5)));
 
         public BookDocumentSheet Sheet { get => (BookDocumentSheet)GetValue(SheetProperty); set => SetValue(SheetProperty, value); }
         public double ColumnWidth { get => (double)GetValue(ColumnWidthProperty); set => SetValue(ColumnWidthProperty, value); }
@@ -175,7 +175,7 @@ namespace SheetReader.Wpf
             if (cell is BookDocumentStyledCell styled && styled.Style != null)
                 return styled.Style;
 
-            return new BookDocumentCellStyle();
+            return BookDocumentCellStyle.Empty;
         }
 
         public override void OnApplyTemplate()
@@ -471,48 +471,61 @@ namespace SheetReader.Wpf
                 }
 
                 // draw cells
-                var cellsRect = new Rect(offsetX + rowsHeaderWidth, offsetY + columnsHeaderHeight, viewWidth - rowsHeaderWidth, viewHeight - columnsHeaderHeight);
-                drawingContext.PushClip(new RectangleGeometry(cellsRect));
-
-                var context = new GetStyleContext
+                double currentRowY;
+                var cellPadding = control.CellPadding;
+                var cellHeight = rowHeight - (cellPadding.Top + cellPadding.Bottom);
+                if (cellHeight > 0)
                 {
-                    RowCol = new RowCol(),
-                    MaxLineCount = 1,
-                    PixelsPerDip = dpi.PixelsPerDip,
-                    Typeface = typeface,
-                    FontSize = control.FontSize,
-                    Foreground = control.Foreground,
-                    TextTrimming = control.TextTrimming,
-                };
-                var currentRowY = columnsHeaderHeight + lineSize / 2 + rowFullHeight * firstDrawnRowIndex;
-                for (var i = firstDrawnRowIndex; i <= lastDrawnRowIndex; i++)
-                {
-                    if (!control.Sheet.Rows.TryGetValue(i, out var row))
-                        continue;
+                    var cellsRect = new Rect(offsetX + rowsHeaderWidth, offsetY + columnsHeaderHeight, viewWidth - rowsHeaderWidth, viewHeight - columnsHeaderHeight);
+                    drawingContext.PushClip(new RectangleGeometry(cellsRect));
 
-                    context.RowCol.RowIndex = i;
-                    var ccx = startCurrentColX;
-                    for (var j = firstDrawnColumnIndex.Value; j <= lastDrawnColumnIndex; j++)
+                    var context = new GetStyleContext
                     {
-                        var colWidth = control._columnSettings[j].Width;
-                        context.ColumnWidth = colWidth;
-                        if (row.Cells.TryGetValue(j, out var cell))
+                        RowCol = new RowCol(),
+                        MaxLineCount = 1,
+                        PixelsPerDip = dpi.PixelsPerDip,
+                        Typeface = typeface,
+                        FontSize = control.FontSize,
+                        Foreground = control.Foreground,
+                        TextTrimming = control.TextTrimming,
+                        RowHeight = cellHeight,
+                    };
+
+                    currentRowY = columnsHeaderHeight + lineSize / 2 + rowFullHeight * firstDrawnRowIndex;
+                    for (var i = firstDrawnRowIndex; i <= lastDrawnRowIndex; i++)
+                    {
+                        if (!control.Sheet.Rows.TryGetValue(i, out var row))
+                            continue;
+
+                        context.RowCol.RowIndex = i;
+                        var ccx = startCurrentColX;
+                        for (var j = firstDrawnColumnIndex.Value; j <= lastDrawnColumnIndex; j++)
                         {
-                            context.RowCol.RowIndex = j;
-                            var style = control.GetCellStyle(context, cell);
-                            var formattedCell = style.CreateCellFormattedText(context, cell);
-                            if (formattedCell != null)
+                            var colWidth = control._columnSettings[j].Width;
+                            var cellWidth = colWidth - (cellPadding.Right + cellPadding.Left);
+                            if (cellWidth <= 0)
+                                continue;
+
+                            context.ColumnWidth = colWidth;
+                            context.CellWidth = cellWidth;
+                            if (row.Cells.TryGetValue(j, out var cell))
                             {
-                                var textOffsetY = (rowHeight - formattedCell.Height) / 2; // center vertically
-                                drawingContext.DrawText(formattedCell, new Point(ccx + lineSize / 2, currentRowY + lineSize / 2 + textOffsetY));
+                                context.RowCol.RowIndex = j;
+                                var style = control.GetCellStyle(context, cell);
+                                var formattedCell = style.CreateCellFormattedText(context, cell);
+                                if (formattedCell != null)
+                                {
+                                    var textOffsetY = (rowHeight - formattedCell.Height) / 2; // center vertically
+                                    drawingContext.DrawText(formattedCell, new Point(ccx + cellPadding.Left + lineSize / 2, currentRowY + lineSize / 2 + textOffsetY));
+                                }
                             }
+                            ccx += colWidth + lineSize;
+                            //Log("trace " + i + " x " + j + " " + text);
                         }
-                        ccx += colWidth + lineSize;
-                        //Log("trace " + i + " x " + j + " " + text);
+                        currentRowY += rowFullHeight;
                     }
-                    currentRowY += rowFullHeight;
+                    drawingContext.Pop();
                 }
-                drawingContext.Pop();
 
                 var rowsHeight = (lastDrawnRowIndex + 1) * rowFullHeight + columnsHeaderFullHeight;
                 var columnsWidth = rowsHeaderFullWidth;

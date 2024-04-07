@@ -7,6 +7,7 @@ namespace SheetReader.Wpf
     public class BookDocumentCellStyle
     {
         public static Brush DefaultErrorForeground { get; set; } = Brushes.Red;
+        public static BookDocumentCellStyle Empty { get; } = new();
 
         public virtual Typeface? Typeface { get; set; }
         public virtual double? FontSize { get; set; }
@@ -34,9 +35,18 @@ namespace SheetReader.Wpf
 
             var fg = cell.IsError ? ErrorForeground ?? context.ErrorForeground ?? DefaultErrorForeground : Foreground ?? context.Foreground;
             var formatted = new FormattedText(text, CultureInfo.CurrentCulture, FlowDirection.LeftToRight, Typeface ?? context.Typeface, FontSize ?? context.FontSize, fg, context.PixelsPerDip);
-            if (context.ColumnWidth.HasValue)
+            if (context.CellWidth.HasValue)
+            {
+                formatted.MaxTextWidth = context.CellWidth.Value;
+            }
+            else if (context.ColumnWidth.HasValue)
             {
                 formatted.MaxTextWidth = context.ColumnWidth.Value;
+            }
+
+            if (context.RowHeight.HasValue)
+            {
+                formatted.MaxTextHeight = context.RowHeight.Value;
             }
 
             if (context.MaxLineCount.HasValue)

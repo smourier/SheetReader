@@ -533,7 +533,9 @@ namespace SheetReader.Wpf
                     return _lastResult;
 
                 var result = new SheetControlHitTestResult();
-                if (IsSheetVisible() && _control._scrollViewer != null)
+                if (IsSheetVisible() && _control._scrollViewer != null &&
+                    point.X < _control._scrollViewer.ViewportWidth &&
+                    point.Y < _control._scrollViewer.ViewportHeight)
                 {
                     var context = _control.CreateStyleContext();
                     if (context == null)
@@ -721,6 +723,15 @@ namespace SheetReader.Wpf
                         }
                         currentRowY += context.RowFullHeight.Value;
                     }
+
+                    var selectionBrush = _control.SelectionBrush;
+                    if (selectionBrush != null)
+                    {
+                        var rc = _control.Selection.GetBounds();
+                        var pen = new Pen(selectionBrush, context.LineSize.Value * 3);
+                        drawingContext.DrawRectangle(null, pen, rc);
+                    }
+
                     drawingContext.Pop();
                 }
 
@@ -794,14 +805,6 @@ namespace SheetReader.Wpf
                 // last col
                 drawingContext.DrawLine(context.LinePen, new Point(currentColX, offsetY), new Point(currentColX, offsetY + Math.Min(rowsHeight, viewHeight)));
                 drawingContext.Pop();
-
-                var selectionBrush = _control.SelectionBrush;
-                if (selectionBrush != null)
-                {
-                    var rc = _control.Selection.GetBounds();
-                    var pen = new Pen(selectionBrush, context.LineSize.Value * 3);
-                    drawingContext.DrawRectangle(null, pen, rc);
-                }
             }
         }
     }

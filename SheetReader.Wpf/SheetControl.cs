@@ -89,10 +89,10 @@ namespace SheetReader.Wpf
         private const double _minWidth = 4;
         private const double _movingColumnTolerance = 4;
 
-        private double GetRowHeight() => Math.Max(RowHeight, _minWidth);
-        private double GetRowMargin() => Math.Max(RowMargin, _minWidth);
-        private double GetLineSize() => Math.Max(LineSize, 0);
-        private double GetColumnWidth() => Math.Max(ColumnWidth, _minWidth);
+        internal double GetRowHeight() => Math.Max(RowHeight, _minWidth);
+        internal double GetRowMargin() => Math.Max(RowMargin, _minWidth);
+        internal double GetLineSize() => Math.Max(LineSize, 0);
+        internal double GetColumnWidth() => Math.Max(ColumnWidth, _minWidth);
 
         static SheetControl()
         {
@@ -114,6 +114,7 @@ namespace SheetReader.Wpf
         }
 
         public SheetSelection Selection { get; }
+        public IReadOnlyList<SheetControlColumn> ColumnSettings => _columnSettings.AsReadOnly();
 
         public virtual SheetControlHitTestResult HitTest(Point point) => _grid?.HitTest(point) ?? new();
         public virtual void SetColumnSize(int columnIndex, double width)
@@ -125,6 +126,47 @@ namespace SheetReader.Wpf
             _grid?.InvalidateMeasure();
         }
 
+        public bool EnsureVisible(RowCol rowCol) { ArgumentNullException.ThrowIfNull(rowCol); return EnsureVisible(rowCol.RowIndex, rowCol.ColumnIndex); }
+        public virtual bool EnsureVisible(int rowIndex, int columnIndex)
+        {
+            if (_scrollViewer == null)
+                return false;
+
+            var selection = SheetSelection.From(this, rowIndex, columnIndex);
+            if (selection == null)
+                return false;
+
+            var context = CreateStyleContext();
+            if (context == null)
+                throw new InvalidOperationException();
+
+            context.RowHeight ??= GetRowHeight();
+            context.RowMargin ??= GetRowMargin();
+            context.LineSize ??= GetLineSize();
+
+            var bounds = selection.GetBounds();
+            var deltaX = -Math.Max(0, _scrollViewer.HorizontalOffset + context.RowFullMargin!.Value - bounds.Left);
+            if (deltaX == 0)
+            {
+                deltaX = -Math.Min(0, _scrollViewer.HorizontalOffset + _scrollViewer.ViewportWidth - bounds.Right);
+            }
+
+            var deltaY = -Math.Max(0, _scrollViewer.VerticalOffset + context.RowFullHeight!.Value - bounds.Top);
+            if (deltaY == 0)
+            {
+                deltaY = -Math.Min(0, _scrollViewer.VerticalOffset + _scrollViewer.ViewportHeight - bounds.Bottom);
+            }
+
+            if (deltaX == 0 && deltaY == 0)
+                return false;
+
+            _scrollViewer.ScrollToHorizontalOffset(_scrollViewer.HorizontalOffset + deltaX);
+            _scrollViewer.ScrollToVerticalOffset(_scrollViewer.VerticalOffset + deltaY);
+            return true;
+        }
+
+        public Rect GetCellBounds(RowCol rowCol) { ArgumentNullException.ThrowIfNull(rowCol); return new SheetSelection(this, rowCol.RowIndex, rowCol.ColumnIndex).GetBounds(); }
+        public Rect GetCellBounds(int rowIndex, int columnIndex) => new SheetSelection(this, rowIndex, columnIndex).GetBounds();
         public virtual void SetColumnAutoSize(int columnIndex) => SetColumnsAutoSize(columnIndex, false, Sheet?.Rows.Values);
         private void SetColumnsAutoSize(int columnIndex, bool includeNextColumns, IEnumerable<BookDocumentRow>? rows)
         {
@@ -168,7 +210,7 @@ namespace SheetReader.Wpf
             }
         }
 
-        protected virtual StyleContext CreateStyleContext()
+        protected virtual internal StyleContext CreateStyleContext()
         {
             var rowHeight = GetRowHeight();
             var cellPadding = CellPadding;
@@ -260,7 +302,62 @@ namespace SheetReader.Wpf
                     if (IsMouseCaptured)
                     {
                         ReleaseCapture(false);
+                        e.Handled = true;
                         return;
+                    }
+                    break;
+
+                case Key.C:
+                    if (ctl)
+                    {
+                        // paste unicode text + text + html
+                        const string htmlClipboardHeader = "Version:0.9\r\n" + "StartHTML:{0:0000000000}\r\n" + "EndHTML:{1:0000000000}\r\n" + "StartFragment:{2:0000000000}\r\n" + "EndFragment:{3:0000000000}\r\n";
+                        const string htmlClipboardStart = "<html>\r\n" + "<body>\r\n" + "<!--StartFragment-->";
+                        const string htmlClipboardEnd = "<!--EndFragment-->\r\n" + "</body>\r\n" + "</html>";
+
+                        var tl = Selection.TopLeft;
+                        var br = Selection.BottomRight;
+                        var sb = new StringBuilder();
+                        var html = new StringBuilder(htmlClipboardHeader);
+                        html.Append(htmlClipboardStart);
+                        html.Append("<table>");
+                        for (var i = tl.RowIndex; i <= br.RowIndex; i++)
+                        {
+                            var line = new StringBuilder();
+                            html.Append("<tr>");
+                            if (Sheet.Rows.TryGetValue(i, out var row))
+                            {
+                                for (var j = tl.ColumnIndex; j <= br.ColumnIndex; j++)
+                                {
+                                    html.Append("<td>");
+                                    if (line.Length > 0)
+                                    {
+                                        line.Append('\t');
+                                    }
+
+                                    if (row.Cells.TryGetValue(j, out var cell))
+                                    {
+                                        line.Append(cell.Value);
+                                        if (cell.Value != null)
+                                        {
+                                            var text = string.Format("{0}", cell.Value);
+                                            html.Append(WebUtility.HtmlEncode(text));
+                                        }
+                                    }
+                                    html.Append("</td>");
+                                }
+                            }
+                            sb.AppendLine(line.ToString());
+                            html.Append("</tr>");
+                        }
+
+                        html.Append("</table>");
+                        html.Append(htmlClipboardEnd);
+
+                        var data = new DataObject();
+                        data.SetData(DataFormats.UnicodeText, sb.ToString());
+                        data.SetData(DataFormats.Html, html.ToString());
+                        Clipboard.SetDataObject(data);
                     }
                     break;
 
@@ -268,6 +365,7 @@ namespace SheetReader.Wpf
                     if (ctl)
                     {
                         Selection.SelectAll();
+                        e.Handled = true;
                     }
                     break;
 
@@ -277,6 +375,8 @@ namespace SheetReader.Wpf
                     {
                         Selection.MoveVertically(int.MinValue, shift);
                     }
+                    e.Handled = true;
+                    EnsureVisible(Selection.TopLeft);
                     break;
 
                 case Key.End:
@@ -285,22 +385,32 @@ namespace SheetReader.Wpf
                     {
                         Selection.MoveVertically(int.MaxValue, shift);
                     }
+                    e.Handled = true;
+                    EnsureVisible(Selection.BottomRight);
                     break;
 
                 case Key.Right:
                     Selection.MoveHorizontally(ctl ? int.MaxValue : 1, shift);
+                    e.Handled = true;
+                    EnsureVisible(Selection.BottomRight);
                     break;
 
                 case Key.Left:
                     Selection.MoveHorizontally(ctl ? int.MinValue : -1, shift);
+                    e.Handled = true;
+                    EnsureVisible(Selection.TopLeft);
                     break;
 
                 case Key.Down:
                     Selection.MoveVertically(ctl ? int.MaxValue : 1, shift);
+                    e.Handled = true;
+                    EnsureVisible(Selection.BottomRight);
                     break;
 
                 case Key.Up:
                     Selection.MoveVertically(ctl ? int.MinValue : -1, shift);
+                    e.Handled = true;
+                    EnsureVisible(Selection.TopLeft);
                     break;
             }
         }
@@ -688,45 +798,8 @@ namespace SheetReader.Wpf
                 var selectionBrush = _control.SelectionBrush;
                 if (selectionBrush != null)
                 {
+                    var rc = _control.Selection.GetBounds();
                     var pen = new Pen(selectionBrush, context.LineSize.Value * 3);
-
-                    var x = context.RowFullMargin.Value;
-                    for (var i = 0; i < _control.Selection.ColumnIndex; i++)
-                    {
-                        x += _control._columnSettings[i].Width + context.LineSize.Value;
-                    }
-
-                    var w = _control._columnSettings[_control.Selection.ColumnIndex].Width + context.LineSize.Value;
-                    if (_control.Selection.ColumnExtension < 0)
-                    {
-                        for (var i = 1; i <= -_control.Selection.ColumnExtension; i++)
-                        {
-                            var width = _control._columnSettings[_control.Selection.ColumnIndex - i].Width + context.LineSize.Value;
-                            x -= width;
-                            w += width;
-                        }
-                    }
-                    else
-                    {
-                        for (var i = 1; i <= _control.Selection.ColumnExtension; i++)
-                        {
-                            w += _control._columnSettings[_control.Selection.ColumnIndex + i].Width + context.LineSize.Value;
-                        }
-                    }
-
-                    var y = context.RowFullHeight.Value + context.RowFullHeight.Value * _control.Selection.RowIndex;
-                    var h = context.RowFullHeight.Value;
-                    if (_control.Selection.RowExtension < 0)
-                    {
-                        var height = -_control.Selection.RowExtension * context.RowFullHeight.Value;
-                        h += height;
-                        y -= height;
-                    }
-                    else
-                    {
-                        h += _control.Selection.RowExtension * context.RowFullHeight.Value;
-                    }
-                    var rc = new Rect(x, y, w, h);
                     drawingContext.DrawRectangle(null, pen, rc);
                 }
             }

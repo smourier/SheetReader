@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Windows;
 
 namespace SheetReader.Wpf
 {
@@ -8,6 +9,29 @@ namespace SheetReader.Wpf
         {
             ArgumentNullException.ThrowIfNull(control);
             Control = control;
+        }
+
+        public SheetSelection(SheetControl control, int rowIndex, int columnIndex)
+            : this(control)
+        {
+            ArgumentOutOfRangeException.ThrowIfNegative(rowIndex);
+            ArgumentOutOfRangeException.ThrowIfNegative(columnIndex);
+            if (!control.Sheet.LastRowIndex.HasValue) throw new ArgumentException(null, nameof(control));
+            if (!control.Sheet.LastColumnIndex.HasValue) throw new ArgumentException(null, nameof(control));
+            ArgumentOutOfRangeException.ThrowIfGreaterThan(rowIndex, control.Sheet.LastRowIndex.Value);
+            ArgumentOutOfRangeException.ThrowIfGreaterThan(columnIndex, control.Sheet.LastColumnIndex.Value);
+            RowIndex = rowIndex;
+            ColumnIndex = columnIndex;
+        }
+
+        public static SheetSelection? From(SheetControl control, int rowIndex, int columnIndex)
+        {
+            if (rowIndex < 0 || rowIndex < 0) return null;
+            if (!control.Sheet.LastRowIndex.HasValue) return null;
+            if (!control.Sheet.LastColumnIndex.HasValue) return null;
+            if (rowIndex > control.Sheet.LastRowIndex.Value) return null;
+            if (columnIndex > control.Sheet.LastColumnIndex.Value) return null;
+            return new SheetSelection(control, rowIndex, columnIndex);
         }
 
         public SheetControl Control { get; }
@@ -55,7 +79,7 @@ namespace SheetReader.Wpf
         }
 
         public RowCol TopRight => new(TopLeft.RowIndex, BottomRight.ColumnIndex);
-        public RowCol BottomLeft => new RowCol(BottomRight.RowIndex, TopLeft.ColumnIndex);
+        public RowCol BottomLeft => new(BottomRight.RowIndex, TopLeft.ColumnIndex);
 
         public virtual void SelectRow(int rowIndex)
         {
@@ -309,6 +333,55 @@ namespace SheetReader.Wpf
                 ColumnExtension = 0;
             }
             Control.OnSelectionChanged();
+        }
+
+        public virtual Rect GetBounds(StyleContext? context = null)
+        {
+            context ??= Control.CreateStyleContext();
+            if (context == null)
+                throw new InvalidOperationException();
+
+            context.RowHeight ??= Control.GetRowHeight();
+            context.RowMargin ??= Control.GetRowMargin();
+            context.LineSize ??= Control.GetLineSize();
+
+            var x = context.RowFullMargin!.Value;
+            for (var i = 0; i < ColumnIndex; i++)
+            {
+                x += Control.ColumnSettings[i].Width + context.LineSize.Value;
+            }
+
+            var width = Control.ColumnSettings[ColumnIndex].Width + context.LineSize.Value;
+            if (ColumnExtension < 0)
+            {
+                for (var i = 1; i <= -ColumnExtension; i++)
+                {
+                    var colWidth = Control.ColumnSettings[ColumnIndex - i].Width + context.LineSize.Value;
+                    x -= colWidth;
+                    width += colWidth;
+                }
+            }
+            else
+            {
+                for (var i = 1; i <= ColumnExtension; i++)
+                {
+                    width += Control.ColumnSettings[ColumnIndex + i].Width + context.LineSize.Value;
+                }
+            }
+
+            var y = context.RowFullHeight!.Value + context.RowFullHeight.Value * RowIndex;
+            var height = context.RowFullHeight.Value;
+            if (RowExtension < 0)
+            {
+                var rowHeight = -RowExtension * context.RowFullHeight.Value;
+                height += rowHeight;
+                y -= rowHeight;
+            }
+            else
+            {
+                height += RowExtension * context.RowFullHeight.Value;
+            }
+            return new Rect(x, y, width, height);
         }
 
         public override string ToString()

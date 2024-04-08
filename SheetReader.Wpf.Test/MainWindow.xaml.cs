@@ -132,6 +132,15 @@ namespace SheetReader.Wpf.Test
                 Title = "Sheet Reader - " + Path.GetFileName(filePath);
                 FileName = filePath;
                 Settings.Current.AddRecentFile(filePath);
+
+                if (Sheets.Count > 0)
+                {
+                    // not sure there's a better way to focus on grid
+                    var tabItem = (TabItem)tc.ItemContainerGenerator.ContainerFromItem(Sheets[0]);
+                    Keyboard.Focus(tabItem);
+                    tabItem.MoveFocus(new TraversalRequest(FocusNavigationDirection.Down));
+                    tabItem.MoveFocus(new TraversalRequest(FocusNavigationDirection.Next));
+                }
             }
             else
             {

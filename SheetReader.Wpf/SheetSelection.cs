@@ -351,7 +351,7 @@ namespace SheetReader.Wpf
                 x += Control.ColumnSettings[i].Width + context.LineSize.Value;
             }
 
-            var width = Control.ColumnSettings[ColumnIndex].Width + context.LineSize.Value;
+            var width = Control.ColumnSettings[ColumnIndex].Width;
             if (ColumnExtension < 0)
             {
                 for (var i = 1; i <= -ColumnExtension; i++)
@@ -370,7 +370,7 @@ namespace SheetReader.Wpf
             }
 
             var y = context.RowFullHeight!.Value + context.RowFullHeight.Value * RowIndex;
-            var height = context.RowFullHeight.Value;
+            var height = context.RowHeight.Value;
             if (RowExtension < 0)
             {
                 var rowHeight = -RowExtension * context.RowFullHeight.Value;
@@ -382,6 +382,48 @@ namespace SheetReader.Wpf
                 height += RowExtension * context.RowFullHeight.Value;
             }
             return new Rect(x, y, width, height);
+        }
+
+        protected internal void Update()
+        {
+            if (Control.Sheet == null)
+                return;
+
+            var changed = false;
+            if (Control.Sheet.LastRowIndex.HasValue)
+            {
+                if (RowIndex > Control.Sheet.LastRowIndex.Value)
+                {
+                    RowIndex = Control.Sheet.LastRowIndex.Value;
+                    RowExtension = 0;
+                    changed = true;
+                }
+                else if ((RowIndex + RowExtension) > Control.Sheet.LastRowIndex.Value)
+                {
+                    RowExtension = Control.Sheet.LastRowIndex.Value - RowIndex;
+                    changed = true;
+                }
+            }
+
+            if (Control.Sheet.LastColumnIndex.HasValue)
+            {
+                if (ColumnIndex > Control.Sheet.LastColumnIndex.Value)
+                {
+                    ColumnIndex = Control.Sheet.LastColumnIndex.Value;
+                    ColumnExtension = 0;
+                    changed = true;
+                }
+                else if ((ColumnIndex + ColumnExtension) > Control.Sheet.LastColumnIndex.Value)
+                {
+                    ColumnExtension = Control.Sheet.LastColumnIndex.Value - ColumnIndex;
+                    changed = true;
+                }
+            }
+
+            if (changed)
+            {
+                Control.OnSelectionChanged();
+            }
         }
 
         public override string ToString()

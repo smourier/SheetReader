@@ -109,8 +109,8 @@ namespace SheetReader.Wpf
 
         public SheetControl()
         {
-            Focusable = false;
             Selection = new SheetSelection(this);
+            Focusable = true;
         }
 
         public SheetSelection Selection { get; }
@@ -255,6 +255,7 @@ namespace SheetReader.Wpf
                 }
             }
 
+            Selection.Update();
             _grid?.InvalidateMeasure();
         }
 
@@ -269,14 +270,14 @@ namespace SheetReader.Wpf
 
         protected override void OnGotKeyboardFocus(KeyboardFocusChangedEventArgs e)
         {
-            Log("OnGotKeyboardFocus");
-            base.OnGotKeyboardFocus(e);
+            Selection.Update();
+            _grid?.Focus();
+            _grid?.InvalidateVisual();
         }
 
         protected override void OnLostKeyboardFocus(KeyboardFocusChangedEventArgs e)
         {
-            Log("OnLostKeyboardFocus");
-            base.OnLostKeyboardFocus(e);
+            _grid?.InvalidateVisual();
         }
 
         public override void OnApplyTemplate()
@@ -452,6 +453,7 @@ namespace SheetReader.Wpf
 
         protected override void OnPreviewMouseLeftButtonDown(MouseButtonEventArgs e)
         {
+            Focus();
             var result = HitTest(e.GetPosition(_scrollViewer));
             if (result.MovingColumnIndex.HasValue)
             {
@@ -519,13 +521,19 @@ namespace SheetReader.Wpf
             }
         }
 
-        private sealed class SheetGrid(SheetControl control) : UIElement
+        private sealed class SheetGrid : UIElement
         {
             private bool IsSheetVisible() => _control.Sheet != null && _control.Sheet.Columns.Count > 0 && _control.Sheet.Rows.Count > 0 && _control._scrollViewer != null;
 
             private SheetControlHitTestResult? _lastResult;
             private Point? _lastResultPoint;
-            private readonly SheetControl _control = control;
+            private readonly SheetControl _control;
+
+            public SheetGrid(SheetControl control)
+            {
+                _control = control;
+                Focusable = true;
+            }
 
             public SheetControlHitTestResult HitTest(Point point)
             {
@@ -586,8 +594,6 @@ namespace SheetReader.Wpf
                             }
                         }
                     }
-
-                    //Log("hit: " + result.RowCol + " (" + result.RowCol?.ExcelReference + ") row:" + result.IsOverRowHeader + " column:" + result.IsOverColumnHeader + " moving:" + result.MovingColumnIndex);
                 }
 
                 _lastResultPoint = point;
@@ -662,7 +668,6 @@ namespace SheetReader.Wpf
 
                 var offsetX = _control._scrollViewer.HorizontalOffset;
                 var offsetY = _control._scrollViewer.VerticalOffset;
-                //Log("offset:" + offsetX + " x " + offsetY + " view:" + viewWidth + " x " + viewHeight);
 
                 var firstDrawnColumnIndex = GetColumnIndex(offsetX - context.RowFullMargin!.Value, _control._scrollViewer.ExtentWidth, false);
                 var lastDrawnColumnIndex = GetColumnIndex(offsetX + viewWidth - context.RowFullMargin!.Value, _control._scrollViewer.ExtentWidth, false);
@@ -671,8 +676,6 @@ namespace SheetReader.Wpf
 
                 var firstDrawnRowIndex = Math.Max((int)((offsetY - context.RowFullHeight!.Value) / context.RowFullHeight!.Value), 0);
                 var lastDrawnRowIndex = Math.Max(Math.Min((int)((offsetY - context.RowFullHeight.Value + viewHeight) / context.RowFullHeight.Value), _control.Sheet.LastRowIndex!.Value), firstDrawnRowIndex);
-
-                //Log("col:" + firstDrawnColumnIndex + " => " + lastDrawnColumnIndex + " row:" + firstDrawnRowIndex + " => " + lastDrawnRowIndex);
 
                 // compute first col X
                 var startCurrentColX = context.RowMargin.Value + context.LineSize.Value / 2;
@@ -719,19 +722,9 @@ namespace SheetReader.Wpf
                                 }
                             }
                             ccx += colWidth + context.LineSize.Value;
-                            //Log("trace " + i + " x " + j + " " + text);
                         }
                         currentRowY += context.RowFullHeight.Value;
                     }
-
-                    var selectionBrush = _control.SelectionBrush;
-                    if (selectionBrush != null)
-                    {
-                        var rc = _control.Selection.GetBounds();
-                        var pen = new Pen(selectionBrush, context.LineSize.Value * 3);
-                        drawingContext.DrawRectangle(null, pen, rc);
-                    }
-
                     drawingContext.Pop();
                 }
 
@@ -805,6 +798,31 @@ namespace SheetReader.Wpf
                 // last col
                 drawingContext.DrawLine(context.LinePen, new Point(currentColX, offsetY), new Point(currentColX, offsetY + Math.Min(rowsHeight, viewHeight)));
                 drawingContext.Pop();
+
+                // focus & selection
+                var selectionBrush = _control.SelectionBrush;
+                if (selectionBrush != null)
+                {
+                    var focusMargin = context.LineSize.Value + 2;
+                    var cellsRect = new Rect(
+                        offsetX + context.RowMargin.Value - focusMargin,
+                        offsetY + context.RowHeight.Value - focusMargin,
+                        viewWidth - context.RowMargin.Value + focusMargin,
+                        viewHeight - context.RowHeight.Value + focusMargin);
+                    drawingContext.PushClip(new RectangleGeometry(cellsRect));
+                    var rc = _control.Selection.GetBounds();
+                    if (IsKeyboardFocused)
+                    {
+                        var focusRc = rc;
+                        focusRc.Inflate(focusMargin, focusMargin);
+                        var focusPen = new Pen(selectionBrush, context.LineSize.Value + 1) { DashStyle = new DashStyle([0.0, 3.0], 0) };
+                        drawingContext.DrawRectangle(null, focusPen, focusRc);
+                    }
+
+                    var pen = new Pen(selectionBrush, context.LineSize.Value + 1);
+                    drawingContext.DrawRectangle(null, pen, rc);
+                    drawingContext.Pop();
+                }
             }
         }
     }

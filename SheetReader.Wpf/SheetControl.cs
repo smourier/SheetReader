@@ -533,7 +533,7 @@ namespace SheetReader.Wpf
                     return _lastResult;
 
                 var result = new SheetControlHitTestResult();
-                if (IsSheetVisible())
+                if (IsSheetVisible() && _control._scrollViewer != null)
                 {
                     var lineSize = _control.GetLineSize();
                     var rowHeight = _control.GetRowHeight();
@@ -543,7 +543,7 @@ namespace SheetReader.Wpf
                     var columnsHeaderHeight = rowHeight;
                     var columnsHeaderFullHeight = columnsHeaderHeight + lineSize;
 
-                    var offsetX = _control._scrollViewer!.HorizontalOffset;
+                    var offsetX = _control._scrollViewer.HorizontalOffset;
                     var offsetY = _control._scrollViewer.VerticalOffset;
 
                     var x = point.X + offsetX;
@@ -552,7 +552,7 @@ namespace SheetReader.Wpf
                     var rowIndex = (int)Math.Floor((y - columnsHeaderFullHeight) / rowFullHeight);
                     if (rowIndex >= -1 && rowIndex <= _control.Sheet.LastRowIndex)
                     {
-                        var columnIndex = GetColumnIndex(x - rowsHeaderFullWidth, _control._scrollViewer!.ExtentWidth, true);
+                        var columnIndex = GetColumnIndex(x - rowsHeaderFullWidth, _control._scrollViewer.ExtentWidth, true);
 
                         // independent from scrollviewer
                         result.IsOverRowHeader = point.X >= 0 && point.X <= rowsHeaderFullWidth;

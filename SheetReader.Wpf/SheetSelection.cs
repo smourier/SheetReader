@@ -107,23 +107,40 @@ namespace SheetReader.Wpf
             if (delta == 0 || Control.Sheet == null || !Control.Sheet.LastColumnIndex.HasValue)
                 return;
 
-            var target = ColumnIndex + delta;
-            if (target < 0 || target > Control.Sheet.LastColumnIndex.Value)
-                return;
-
             if (extendSelection)
             {
-                if (delta < 0)
+                // deal with int overflows
+                var ld = (long)delta;
+                var targetExtension = ColumnExtension + ld;
+                var target = ColumnIndex + targetExtension;
+                if (target < 0)
                 {
-                    ColumnExtension--;
+                    ld += -target;
                 }
-                else
+                else if (target > Control.Sheet.LastColumnIndex.Value)
                 {
-                    ColumnExtension++;
+                    ld -= target - Control.Sheet.LastColumnIndex.Value;
                 }
+
+                targetExtension = ColumnExtension + ld;
+                if (targetExtension == ColumnExtension)
+                    return;
+
+                ColumnExtension = (int)targetExtension;
             }
             else
             {
+                var target = ColumnIndex + delta;
+                if (target < 0)
+                {
+                    delta += -target;
+                }
+                else if (target > Control.Sheet.LastColumnIndex.Value)
+                {
+                    delta -= target - Control.Sheet.LastColumnIndex.Value;
+                }
+
+                target = ColumnIndex + delta;
                 ColumnIndex = target;
                 ColumnExtension = 0;
                 RowExtension = 0;
@@ -136,23 +153,40 @@ namespace SheetReader.Wpf
             if (delta == 0 || Control.Sheet == null || !Control.Sheet.LastRowIndex.HasValue)
                 return;
 
-            var target = RowIndex + delta;
-            if (target < 0 || target > Control.Sheet.LastRowIndex.Value)
-                return;
-
             if (extendSelection)
             {
-                if (delta < 0)
+                // deal with int overflows
+                var ld = (long)delta;
+                var targetExtension = RowExtension + ld;
+                var target = RowIndex + targetExtension;
+                if (target < 0)
                 {
-                    RowExtension--;
+                    ld += -target;
                 }
-                else
+                else if (target > Control.Sheet.LastRowIndex.Value)
                 {
-                    RowExtension++;
+                    ld -= target - Control.Sheet.LastRowIndex.Value;
                 }
+
+                targetExtension = RowExtension + ld;
+                if (targetExtension == RowExtension)
+                    return;
+
+                RowExtension = (int)targetExtension;
             }
             else
             {
+                var target = RowIndex + delta;
+                if (target < 0)
+                {
+                    delta += -target;
+                }
+                else if (target > Control.Sheet.LastRowIndex.Value)
+                {
+                    delta -= target - Control.Sheet.LastRowIndex.Value;
+                }
+
+                target = RowIndex + delta;
                 RowIndex = target;
                 RowExtension = 0;
                 ColumnExtension = 0;

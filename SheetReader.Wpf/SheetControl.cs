@@ -241,6 +241,8 @@ namespace SheetReader.Wpf
 
         protected override void OnPreviewKeyDown(KeyEventArgs e)
         {
+            var shift = Keyboard.Modifiers.HasFlag(ModifierKeys.Shift);
+            var ctl = Keyboard.Modifiers.HasFlag(ModifierKeys.Control);
             switch (e.Key)
             {
                 case Key.Escape:
@@ -252,26 +254,42 @@ namespace SheetReader.Wpf
                     break;
 
                 case Key.A:
-                    if (Keyboard.Modifiers.HasFlag(ModifierKeys.Control))
+                    if (ctl)
                     {
                         Selection.SelectAll();
                     }
                     break;
 
+                case Key.Home:
+                    Selection.MoveHorizontally(int.MinValue, shift);
+                    if (ctl)
+                    {
+                        Selection.MoveVertically(int.MinValue, shift);
+                    }
+                    break;
+
+                case Key.End:
+                    Selection.MoveHorizontally(int.MaxValue, shift);
+                    if (ctl)
+                    {
+                        Selection.MoveVertically(int.MaxValue, shift);
+                    }
+                    break;
+
                 case Key.Right:
-                    Selection.MoveHorizontally(1, Keyboard.Modifiers.HasFlag(ModifierKeys.Shift));
+                    Selection.MoveHorizontally(ctl ? int.MaxValue : 1, shift);
                     break;
 
                 case Key.Left:
-                    Selection.MoveHorizontally(-1, Keyboard.Modifiers.HasFlag(ModifierKeys.Shift));
+                    Selection.MoveHorizontally(ctl ? int.MinValue : -1, shift);
                     break;
 
                 case Key.Down:
-                    Selection.MoveVertically(1, Keyboard.Modifiers.HasFlag(ModifierKeys.Shift));
+                    Selection.MoveVertically(ctl ? int.MaxValue : 1, shift);
                     break;
 
                 case Key.Up:
-                    Selection.MoveVertically(-1, Keyboard.Modifiers.HasFlag(ModifierKeys.Shift));
+                    Selection.MoveVertically(ctl ? int.MinValue : -1, shift);
                     break;
             }
         }
@@ -651,7 +669,6 @@ namespace SheetReader.Wpf
                 {
                     var pen = new Pen(selectionBrush, context.LineSize.Value * 3);
 
-                    var y = context.RowFullHeight.Value + context.RowFullHeight.Value * _control.Selection.RowIndex;
                     var x = context.RowFullMargin.Value;
                     for (var i = 0; i < _control.Selection.ColumnIndex; i++)
                     {
@@ -659,7 +676,6 @@ namespace SheetReader.Wpf
                     }
 
                     var w = _control._columnSettings[_control.Selection.ColumnIndex].Width + context.LineSize.Value;
-
                     if (_control.Selection.ColumnExtension < 0)
                     {
                         for (var i = 1; i <= -_control.Selection.ColumnExtension; i++)
@@ -677,7 +693,18 @@ namespace SheetReader.Wpf
                         }
                     }
 
-                    var h = (_control.Selection.RowExtension + 1) * context.RowFullHeight.Value;
+                    var y = context.RowFullHeight.Value + context.RowFullHeight.Value * _control.Selection.RowIndex;
+                    var h = context.RowFullHeight.Value;
+                    if (_control.Selection.RowExtension < 0)
+                    {
+                        var height = -_control.Selection.RowExtension * context.RowFullHeight.Value;
+                        h += height;
+                        y -= height;
+                    }
+                    else
+                    {
+                        h += _control.Selection.RowExtension * context.RowFullHeight.Value;
+                    }
                     var rc = new Rect(x, y, w, h);
                     drawingContext.DrawRectangle(null, pen, rc);
                 }

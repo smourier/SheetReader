@@ -70,6 +70,8 @@ namespace SheetReader.Wpf
             typeof(SheetControl),
             new UIPropertyMetadata(new Thickness(5, 0, 5, 0)));
 
+        public static readonly RoutedEvent SelectionChangedEvent = EventManager.RegisterRoutedEvent(nameof(SelectionChanged), RoutingStrategy.Bubble, typeof(RoutedEventHandler), typeof(SheetControl));
+
         public BookDocumentSheet Sheet { get => (BookDocumentSheet)GetValue(SheetProperty); set => SetValue(SheetProperty, value); }
         public double ColumnWidth { get => (double)GetValue(ColumnWidthProperty); set => SetValue(ColumnWidthProperty, value); }
         public double RowMargin { get => (double)GetValue(RowMarginProperty); set => SetValue(RowMarginProperty, value); }
@@ -81,6 +83,8 @@ namespace SheetReader.Wpf
         public TextAlignment TextAlignment { get => (TextAlignment)GetValue(TextAlignmentProperty); set => SetValue(TextAlignmentProperty, value); }
         public TextTrimming TextTrimming { get => (TextTrimming)GetValue(TextTrimmingProperty); set => SetValue(TextTrimmingProperty, value); }
         public Thickness CellPadding { get => (Thickness)GetValue(CellPaddingProperty); set => SetValue(CellPaddingProperty, value); }
+
+        public event RoutedEventHandler SelectionChanged { add => AddHandler(SelectionChangedEvent, value); remove => RemoveHandler(SelectionChangedEvent, value); }
 
         private const double _minWidth = 4;
         private const double _movingColumnTolerance = 4;
@@ -183,7 +187,12 @@ namespace SheetReader.Wpf
             };
         }
 
-        protected virtual internal void OnSelectionChanged() => _grid?.InvalidateVisual();
+        protected virtual internal void OnSelectionChanged()
+        {
+            _grid?.InvalidateVisual();
+            RaiseEvent(new RoutedEventArgs(SelectionChangedEvent));
+        }
+
         protected virtual void OnSheetChanged()
         {
             _columnSettings.Clear();
@@ -238,6 +247,7 @@ namespace SheetReader.Wpf
             _grid = new SheetGrid(this);
             _scrollViewer.Content = _grid;
             _scrollViewer.ScrollChanged += (s, e) => _grid?.InvalidateVisual();
+            RaiseEvent(new RoutedEventArgs(SelectionChangedEvent));
         }
 
         protected override void OnPreviewKeyDown(KeyEventArgs e)

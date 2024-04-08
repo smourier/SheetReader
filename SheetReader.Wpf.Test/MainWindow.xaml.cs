@@ -22,7 +22,6 @@ namespace SheetReader.Wpf.Test
             InitializeComponent();
             tc.ItemsSource = Sheets;
 
-            tc.Focus();
             Task.Run(() => Settings.Current.CleanRecentFiles());
         }
 
@@ -63,6 +62,12 @@ namespace SheetReader.Wpf.Test
                 return;
 
             LoadDocument(ofd.FileName);
+        }
+
+        private void SheetControl_SelectionChanged(object sender, RoutedEventArgs e)
+        {
+            var sc = (SheetControl)sender;
+            selection.Text = "Selection:" + sc.Selection.ToString();
         }
 
         private void OpenWithExcel()
@@ -153,20 +158,20 @@ namespace SheetReader.Wpf.Test
             {
                 if (result.IsOverRowHeader)
                 {
-                    status.Text = $"Row {result.RowCol.RowIndex + 1}";
+                    status.Text = $"Row: {result.RowCol.RowIndex + 1}";
                     return;
                 }
 
                 if (result.IsOverColumnHeader)
                 {
-                    status.Text = $"Column {Row.GetExcelColumnName(result.RowCol.ColumnIndex)} ({result.RowCol.ColumnIndex})";
+                    status.Text = $"Column: {Row.GetExcelColumnName(result.RowCol.ColumnIndex)} ({result.RowCol.ColumnIndex})";
                     return;
                 }
 
                 var cell = result.Cell;
                 if (cell != null)
                 {
-                    status.Text = $"{result.RowCol.ExcelReference}: {cell.Value}";
+                    status.Text = $"Cell: {result.RowCol.ExcelReference}: {cell.Value}";
                     return;
                 }
             }
@@ -249,11 +254,6 @@ namespace SheetReader.Wpf.Test
             public override Brush? Foreground { get => Brushes.Orange; }
             public override TextAlignment? TextAlignment { get => System.Windows.TextAlignment.Right; }
             public override string ToString() => "DateTime";
-        }
-
-        private void sc_Loaded(object sender, RoutedEventArgs e)
-        {
-
         }
     }
 }

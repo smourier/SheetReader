@@ -16,6 +16,47 @@ namespace SheetReader.Wpf
         public virtual int RowExtension { get; protected set; }
         public virtual int ColumnExtension { get; protected set; }
 
+        public RowCol TopLeft
+        {
+            get
+            {
+                var rowIndex = RowIndex;
+                if (RowExtension < 0)
+                {
+                    rowIndex += RowExtension;
+                }
+
+                var columnIndex = ColumnIndex;
+                if (ColumnExtension < 0)
+                {
+                    columnIndex += ColumnExtension;
+                }
+                return new(rowIndex, columnIndex);
+            }
+        }
+
+        public RowCol BottomRight
+        {
+            get
+            {
+                var rowIndex = RowIndex;
+                if (RowExtension > 0)
+                {
+                    rowIndex += RowExtension;
+                }
+
+                var columnIndex = ColumnIndex;
+                if (ColumnExtension > 0)
+                {
+                    columnIndex += ColumnExtension;
+                }
+                return new(rowIndex, columnIndex);
+            }
+        }
+
+        public RowCol TopRight => new(TopLeft.RowIndex, BottomRight.ColumnIndex);
+        public RowCol BottomLeft => new RowCol(BottomRight.RowIndex, TopLeft.ColumnIndex);
+
         public virtual void SelectRow(int rowIndex)
         {
             if (Control.Sheet == null || !Control.Sheet.LastRowIndex.HasValue)
@@ -268,6 +309,16 @@ namespace SheetReader.Wpf
                 ColumnExtension = 0;
             }
             Control.OnSelectionChanged();
+        }
+
+        public override string ToString()
+        {
+            var topLeft = TopLeft;
+            var bottomRight = BottomRight;
+            if (bottomRight == topLeft)
+                return topLeft.ExcelReference;
+
+            return topLeft.ExcelReference + ":" + bottomRight.ExcelReference;
         }
     }
 }

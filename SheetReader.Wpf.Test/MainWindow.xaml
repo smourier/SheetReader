@@ -67,11 +67,15 @@
                     <smx:SheetControl
                         x:Name="sc"
                         MouseMove="SheetControl_MouseMove"
+                        SelectionChanged="SheetControl_SelectionChanged"
                         Sheet="{Binding}" />
                 </DataTemplate>
             </TabControl.ContentTemplate>
         </TabControl>
         <StatusBar Grid.Row="2">
+            <StatusBarItem>
+                <TextBlock x:Name="selection" />
+            </StatusBarItem>
             <StatusBarItem>
                 <TextBlock x:Name="status" MaxHeight="200" />
             </StatusBarItem>

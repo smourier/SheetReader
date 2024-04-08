@@ -1255,6 +1255,16 @@ namespace SheetReader
 {
     public class RowCol : IEquatable<RowCol>
     {
+        public RowCol()
+        {
+        }
+
+        public RowCol(int rowIndex, int columnIndex)
+        {
+            RowIndex = rowIndex;
+            ColumnIndex = columnIndex;
+        }
+
         public virtual int RowIndex { get; set; }
         public virtual int ColumnIndex { get; set; }
 

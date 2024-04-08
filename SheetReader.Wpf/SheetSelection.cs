@@ -102,6 +102,82 @@ namespace SheetReader.Wpf
             }
         }
 
+        public void Select(RowCol rowCol) { if (rowCol == null) return; Select(rowCol.RowIndex, rowCol.ColumnIndex); }
+        public virtual void Select(int rowIndex, int columnIndex)
+        {
+            if (Control.Sheet == null || !Control.Sheet.LastRowIndex.HasValue || !Control.Sheet.LastColumnIndex.HasValue)
+                return;
+
+            var changed = false;
+            if (rowIndex < 0 || rowIndex > Control.Sheet.LastRowIndex.Value)
+                return;
+
+            if (rowIndex != RowIndex)
+            {
+                RowIndex = rowIndex;
+                changed = true;
+            }
+
+            if (columnIndex < 0 || columnIndex > Control.Sheet.LastColumnIndex.Value)
+                return;
+
+            if (columnIndex != ColumnIndex)
+            {
+                ColumnIndex = columnIndex;
+                changed = true;
+            }
+
+            if (RowExtension != 0)
+            {
+                RowExtension = 0;
+                changed = true;
+            }
+
+            if (ColumnExtension != 0)
+            {
+                ColumnExtension = 0;
+                changed = true;
+            }
+
+            if (changed)
+            {
+                Control.OnSelectionChanged();
+            }
+        }
+
+        public void SelectTo(RowCol rowCol) { if (rowCol == null) return; SelectTo(rowCol.RowIndex, rowCol.ColumnIndex); }
+        public virtual void SelectTo(int rowIndex, int columnIndex)
+        {
+            if (Control.Sheet == null || !Control.Sheet.LastRowIndex.HasValue || !Control.Sheet.LastColumnIndex.HasValue)
+                return;
+
+            var changed = false;
+            if (rowIndex < 0 || rowIndex > Control.Sheet.LastRowIndex.Value)
+                return;
+
+            var rowExtension = rowIndex - RowIndex;
+            if (rowExtension != RowExtension)
+            {
+                RowExtension = rowExtension;
+                changed = true;
+            }
+
+            if (columnIndex < 0 || columnIndex > Control.Sheet.LastColumnIndex.Value)
+                return;
+
+            var columnExtension = columnIndex - ColumnIndex;
+            if (columnExtension != ColumnExtension)
+            {
+                ColumnExtension = columnExtension;
+                changed = true;
+            }
+
+            if (changed)
+            {
+                Control.OnSelectionChanged();
+            }
+        }
+
         public virtual void MoveHorizontally(int delta, bool extendSelection)
         {
             if (delta == 0 || Control.Sheet == null || !Control.Sheet.LastColumnIndex.HasValue)

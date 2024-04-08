@@ -100,6 +100,7 @@ namespace SheetReader.Wpf
         private ScrollViewer? _scrollViewer;
         private SheetGrid? _grid;
         private MovingColumn? _movingColumn;
+        private bool _extendingSelection;
         private readonly List<SheetControlColumn> _columnSettings = [];
 
         public SheetControl()
@@ -323,27 +324,32 @@ namespace SheetReader.Wpf
             }
         }
 
-        protected override void OnPreviewMouseLeftButtonUp(MouseButtonEventArgs e) => ReleaseCapture(true);
+        protected override void OnPreviewMouseLeftButtonUp(MouseButtonEventArgs e)
+        {
+            _extendingSelection = false;
+            ReleaseCapture(true);
+        }
+
         protected override void OnPreviewMouseLeftButtonDown(MouseButtonEventArgs e)
         {
-            if (_scrollViewer == null)
-                return;
-
             var result = HitTest(e.GetPosition(_scrollViewer));
             if (result.MovingColumnIndex.HasValue)
             {
                 Cursor = Cursors.SizeWE;
                 CaptureMouse();
                 _movingColumn = new MovingColumn(this, _columnSettings[result.MovingColumnIndex.Value], e.GetPosition(this));
-                Focus();
+                return;
+            }
+
+            if (!result.IsOverRowHeader && !result.IsOverColumnHeader && result.RowCol != null)
+            {
+                Selection.Select(result.RowCol);
+                _extendingSelection = true;
             }
         }
 
         protected override void OnMouseMove(MouseEventArgs e)
         {
-            if (_scrollViewer == null)
-                return;
-
             if (_movingColumn != null)
             {
                 Cursor = Cursors.SizeWE;
@@ -359,6 +365,11 @@ namespace SheetReader.Wpf
                 else
                 {
                     Cursor = null;
+                }
+
+                if (_extendingSelection && !result.IsOverRowHeader && !result.IsOverColumnHeader && result.RowCol != null)
+                {
+                    Selection.SelectTo(result.RowCol);
                 }
             }
         }

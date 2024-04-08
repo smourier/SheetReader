@@ -535,13 +535,13 @@ namespace SheetReader.Wpf
                 var result = new SheetControlHitTestResult();
                 if (IsSheetVisible() && _control._scrollViewer != null)
                 {
-                    var lineSize = _control.GetLineSize();
-                    var rowHeight = _control.GetRowHeight();
-                    var rowFullHeight = rowHeight + lineSize;
-                    var rowsHeaderWidth = _control.GetRowMargin();
-                    var rowsHeaderFullWidth = rowsHeaderWidth + lineSize;
-                    var columnsHeaderHeight = rowHeight;
-                    var columnsHeaderFullHeight = columnsHeaderHeight + lineSize;
+                    var context = _control.CreateStyleContext();
+                    if (context == null)
+                        throw new InvalidOperationException();
+
+                    context.RowHeight ??= _control.GetRowHeight();
+                    context.RowMargin ??= _control.GetRowMargin();
+                    context.LineSize ??= _control.GetLineSize();
 
                     var offsetX = _control._scrollViewer.HorizontalOffset;
                     var offsetY = _control._scrollViewer.VerticalOffset;
@@ -549,14 +549,14 @@ namespace SheetReader.Wpf
                     var x = point.X + offsetX;
                     var y = point.Y + offsetY;
 
-                    var rowIndex = (int)Math.Floor((y - columnsHeaderFullHeight) / rowFullHeight);
+                    var rowIndex = (int)Math.Floor((y - context.RowFullHeight!.Value) / context.RowFullHeight.Value);
                     if (rowIndex >= -1 && rowIndex <= _control.Sheet.LastRowIndex)
                     {
-                        var columnIndex = GetColumnIndex(x - rowsHeaderFullWidth, _control._scrollViewer.ExtentWidth, true);
+                        var columnIndex = GetColumnIndex(x - context.RowFullMargin!.Value, _control._scrollViewer.ExtentWidth, true);
 
                         // independent from scrollviewer
-                        result.IsOverRowHeader = point.X >= 0 && point.X <= rowsHeaderFullWidth;
-                        result.IsOverColumnHeader = point.Y >= 0 && point.Y <= columnsHeaderFullHeight;
+                        result.IsOverRowHeader = point.X >= 0 && point.X <= context.RowFullMargin.Value;
+                        result.IsOverColumnHeader = point.Y >= 0 && point.Y <= context.RowFullHeight.Value;
 
                         if (columnIndex >= 0 || rowIndex >= 0)
                         {
@@ -570,17 +570,17 @@ namespace SheetReader.Wpf
 
                         if (!result.IsOverRowHeader)
                         {
-                            var colSeparatorX = rowsHeaderFullWidth;
+                            var colSeparatorX = context.RowFullMargin.Value;
                             for (var i = 0; i < _control._columnSettings.Count; i++)
                             {
                                 colSeparatorX += _control._columnSettings[i].Width;
-                                if ((x + _movingColumnTolerance) >= colSeparatorX && (x - _movingColumnTolerance) <= (colSeparatorX + lineSize))
+                                if ((x + _movingColumnTolerance) >= colSeparatorX && (x - _movingColumnTolerance) <= (colSeparatorX + context.LineSize.Value))
                                 {
                                     result.MovingColumnIndex = i;
                                     break;
                                 }
 
-                                colSeparatorX += lineSize;
+                                colSeparatorX += context.LineSize.Value;
                             }
                         }
                     }
@@ -598,20 +598,20 @@ namespace SheetReader.Wpf
                 if (!IsSheetVisible())
                     return new Size();
 
-                var lineSize = _control.GetLineSize();
-                var rowHeight = _control.GetRowHeight();
-                var rowFullHeight = rowHeight + lineSize;
-                var rowsHeaderWidth = _control.GetRowMargin();
-                var columnsHeaderHeight = rowHeight;
-                var columnsHeaderFullHeight = columnsHeaderHeight + lineSize;
+                var context = _control.CreateStyleContext();
+                if (context == null)
+                    throw new InvalidOperationException();
 
-                var columnsWidth = lineSize + rowsHeaderWidth;
+                context.RowHeight ??= _control.GetRowHeight();
+                context.RowMargin ??= _control.GetRowMargin();
+                context.LineSize ??= _control.GetLineSize();
+                var columnsWidth = context.RowFullMargin!.Value; ;
                 foreach (var column in _control._columnSettings)
                 {
-                    columnsWidth += column.Width + lineSize;
+                    columnsWidth += column.Width + context.LineSize.Value;
                 }
 
-                return new Size(columnsWidth, columnsHeaderFullHeight + rowFullHeight * (_control.Sheet.LastRowIndex!.Value + 1));
+                return new Size(columnsWidth, context.RowFullHeight!.Value + context.RowFullHeight.Value * (_control.Sheet.LastRowIndex!.Value + 1));
             }
 
             private int? GetColumnIndex(double x, double maxWidth, bool allowReturnNull)

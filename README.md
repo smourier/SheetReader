@@ -1,5 +1,5 @@
 # SheetReader
-A simple CSV or XLSX data sheet reader. It doesn't allocate memory for the whole file but reads rows and cells on demand.
+A simple CSV or XLSX data sheet reader. It doesn't allocate memory for the whole input file (or stream) but reads rows and cells on demand.
 
 Example:
 
@@ -26,11 +26,11 @@ Example:
 
 The code is also available as a single .cs file: [SheetReader.cs](Amalgamation/SheetReader.cs)
 
-There's also a WPF control that allows to see what's been read by the **SheetReader**:
+There's also a read-only WPF control that allows to see what's been read by the **SheetReader**:
 
 ![image](https://github.com/smourier/SheetReader/assets/5328574/6c32c034-0703-4879-88b7-7a615bfffee1)
 
-Supports selection, keyboard navigation, selection and focus (mouse & keyboard):
+Supports keyboard navigation, selection and focus (mouse & keyboard):
 
 ![image](https://github.com/smourier/SheetReader/assets/5328574/0eca72a2-ff5f-46b0-9fda-6f8e404cfdf6)
 

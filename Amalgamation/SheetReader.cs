@@ -1,4 +1,5 @@
-﻿/*
+﻿//NOSONAR
+/*
 MIT License
 
 Copyright (c) 2023-2024 Simon Mourier
@@ -22,8 +23,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 /*
-AssemblyVersion: 2.0.0.0
-AssemblyFileVersion: 2.0.0.0
+AssemblyVersion: 3.0.0.0
+AssemblyFileVersion: 3.0.0.0
 */
 using Extensions = SheetReader.Utilities.Extensions;
 using SheetReader.Utilities;
@@ -33,11 +34,15 @@ using System.Globalization;
 using System.IO.Compression;
 using System.IO;
 using System.Linq;
+using System.Text.Json;
 using System.Text;
 using System.Xml.Linq;
 using System.Xml.XPath;
 using System.Xml;
 using System;
+
+#pragma warning disable IDE0079 // Remove unnecessary suppression
+#pragma warning disable IDE0130 // Namespace does not match folder structure
 
 namespace SheetReader
 {
@@ -98,9 +103,300 @@ namespace SheetReader
             if (format is XlsxBookFormat xlsx)
                 return EnumerateXlsxSheets(stream, xlsx);
 
+            if (format is JsonBookFormat json)
+                return EnumerateJsonSheets(stream, json);
+
             throw new NotSupportedException();
         }
 
+        protected virtual JsonSheet CreateJsonSheet(JsonElement element, JsonBookFormat format) => new(element, format);
+        protected virtual IEnumerable<Sheet> EnumerateJsonSheets(Stream stream, JsonBookFormat format)
+        {
+            ArgumentNullException.ThrowIfNull(stream);
+            ArgumentNullException.ThrowIfNull(format);
+
+            var root = JsonSerializer.Deserialize<JsonElement>(stream, format.SerializerOptions);
+            JsonElement? sheets = null;
+            if (format.SheetsPropertyName == null)
+            {
+                if (root.ValueKind == JsonValueKind.Object &&
+                    ((root.TryGetProperty("sheets", out var sheetElement) && sheetElement.ValueKind == JsonValueKind.Array) ||
+                    (root.TryGetProperty("Sheets", out sheetElement) && sheetElement.ValueKind == JsonValueKind.Array)))
+                {
+                    sheets = sheetElement;
+                }
+            }
+            else if (root.ValueKind == JsonValueKind.Object &&
+                root.TryGetProperty(format.SheetsPropertyName, out JsonElement element) && element.ValueKind == JsonValueKind.Array)
+            {
+                sheets = element;
+            }
+
+            if (!sheets.HasValue)
+            {
+                var sheet = CreateJsonSheet(root, format);
+                if (sheet != null)
+                {
+                    readSheet(root, sheet);
+                    yield return sheet;
+                }
+                yield break;
+            }
+
+            foreach (var sheetElement in sheets.Value.EnumerateArray())
+            {
+                var sheet = CreateJsonSheet(sheetElement, format);
+                if (sheet == null)
+                    continue;
+
+                readSheet(sheetElement, sheet);
+                yield return sheet;
+            }
+
+            static void readSheet(JsonElement element, Sheet sheet)
+            {
+                sheet.Name = element.GetNullifiedString("name") ?? element.GetNullifiedString("Name");
+                if (element.GetNullableBoolean("isHidden").GetValueOrDefault() || element.GetNullableBoolean("IsHidden").GetValueOrDefault())
+                {
+                    sheet.IsVisible = false;
+                }
+            }
+        }
+
+        public class JsonSheet : Sheet
+        {
+            private readonly Dictionary<string, int> _columnsFromRows = new(StringComparer.OrdinalIgnoreCase);
+
+            public JsonSheet(JsonElement element, JsonBookFormat format)
+            {
+                ArgumentNullException.ThrowIfNull(format);
+                Element = element;
+                Format = format;
+            }
+
+            public JsonElement Element { get; }
+            public JsonBookFormat Format { get; }
+            public IReadOnlyDictionary<string, int> ColumnsFromRows => _columnsFromRows;
+
+            public virtual int AddOrGetColumnFromRows(string name)
+            {
+                ArgumentNullException.ThrowIfNull(name);
+                if (!_columnsFromRows.TryGetValue(name, out var index))
+                {
+                    index = _columnsFromRows.Count;
+                    _columnsFromRows.Add(name, index);
+                }
+                return index;
+            }
+
+            public override IEnumerable<Column> EnumerateColumns()
+            {
+                var count = 0;
+                foreach (var item in EnumerateDeclaredColumns())
+                {
+                    yield return item;
+                    count++;
+                }
+
+                if (count != 0 || _columnsFromRows.Count <= 0)
+                {
+                    yield break;
+                }
+
+                foreach (var kv in _columnsFromRows)
+                {
+                    yield return new Column { Index = kv.Value, Name = kv.Key };
+                }
+            }
+
+            public virtual IEnumerable<Column> EnumerateDeclaredColumns()
+            {
+                JsonElement columns;
+                if (Format.ColumnsPropertyName == null)
+                {
+                    if (Element.ValueKind != JsonValueKind.Object)
+                        yield break;
+
+                    if (Element.TryGetProperty("columns", out var element2) && element2.ValueKind == JsonValueKind.Array)
+                    {
+                        columns = element2;
+                    }
+                    else
+                    {
+                        if (!Element.TryGetProperty("Columns", out element2) || element2.ValueKind != JsonValueKind.Array)
+                            yield break;
+
+                        columns = element2;
+                    }
+                }
+                else
+                {
+                    if (Element.ValueKind != JsonValueKind.Object || !Element.TryGetProperty(Format.ColumnsPropertyName, out var element) || element.ValueKind != JsonValueKind.Array)
+                        yield break;
+
+                    columns = element;
+                }
+
+                var index = 0;
+                foreach (var columnElement in columns.EnumerateArray())
+                {
+                    var column = CreateColumn();
+                    if (column != null)
+                    {
+                        switch (columnElement.ValueKind)
+                        {
+                            case JsonValueKind.Object:
+                                column.Name = columnElement.GetNullifiedString("name") ?? columnElement.GetNullifiedString("Name");
+                                break;
+
+                            case JsonValueKind.String:
+                                column.Name = columnElement.GetString();
+                                break;
+
+                            case JsonValueKind.Number:
+                                column.Name = columnElement.GetInt64().ToString();
+                                break;
+                        }
+
+                        if (column.Name != null)
+                        {
+                            column.Index = columnElement.GetNullableInt32("index") ?? columnElement.GetNullableInt32("Index").GetValueOrDefault(index);
+                            yield return column;
+                            index++;
+                        }
+                    }
+                }
+            }
+
+            public override IEnumerable<Row> EnumerateRows()
+            {
+                JsonElement rows;
+                if (Format.RowsPropertyName == null)
+                {
+                    if (Element.ValueKind == JsonValueKind.Array)
+                    {
+                        rows = Element;
+                    }
+                    else if (Element.TryGetProperty("rows", out var element) && element.ValueKind == JsonValueKind.Array)
+                    {
+                        rows = element;
+                    }
+                    else
+                    {
+                        if (!Element.TryGetProperty("Rows", out element) || element.ValueKind != JsonValueKind.Array)
+                            yield break;
+
+                        rows = element;
+                    }
+                }
+                else
+                {
+                    if (!Element.TryGetProperty(Format.RowsPropertyName, out var element) || element.ValueKind != JsonValueKind.Array)
+                        yield break;
+
+                    rows = element;
+                }
+
+                var index = 0;
+                foreach (var rowElement in rows.EnumerateArray())
+                {
+                    var row = CreateRow(this, rowElement, Format);
+                    if (row != null)
+                    {
+                        row.Index = index;
+                        index++;
+                        yield return row;
+                    }
+                }
+            }
+
+            protected virtual JsonRow CreateRow(JsonSheet sheet, JsonElement element, JsonBookFormat format) => new(sheet, element, format);
+        }
+
+        public class JsonCell(JsonElement element) : Cell
+        {
+            public JsonElement Element { get; } = element;
+        }
+
+        public class JsonRow : Row
+        {
+            public JsonRow(JsonSheet sheet, JsonElement element, JsonBookFormat format)
+            {
+                ArgumentNullException.ThrowIfNull(sheet);
+                ArgumentNullException.ThrowIfNull(format);
+                Sheet = sheet;
+                Element = element;
+                Format = format;
+            }
+
+            public JsonSheet Sheet { get; }
+            public JsonElement Element { get; }
+            public JsonBookFormat Format { get; }
+
+            public override IEnumerable<Cell> EnumerateCells()
+            {
+                if (Element.ValueKind == JsonValueKind.Array)
+                {
+                    int index = 0;
+                    foreach (JsonElement cellElement2 in Element.EnumerateArray())
+                    {
+                        Cell cell = readCell(cellElement2);
+                        cell.ColumnIndex = index;
+                        yield return cell;
+                        index++;
+                    }
+                }
+                else
+                {
+                    if (Element.ValueKind != JsonValueKind.Object)
+                    {
+                        yield break;
+                    }
+                    foreach (JsonProperty property in Element.EnumerateObject())
+                    {
+                        int index2 = Sheet.AddOrGetColumnFromRows(property.Name);
+                        JsonElement cellElement3 = Element.GetProperty(property.Name);
+                        Cell cell2 = readCell(cellElement3);
+                        cell2.ColumnIndex = index2;
+                        yield return cell2;
+                    }
+                }
+                Cell readCell(JsonElement cellElement)
+                {
+                    Cell cell3;
+                    if (cellElement.ValueKind == JsonValueKind.Object)
+                    {
+                        cell3 = CreateJsonCell(cellElement);
+                        if (cellElement.TryGetProperty("value", out var property2) || cellElement.TryGetProperty("Value", out property2))
+                        {
+                            cell3.Value = Utilities.Extensions.ToObject(property2, Format.Options);
+                            cell3.RawValue = property2.GetRawText();
+                        }
+                        if ((cellElement.TryGetProperty("isError", out property2) || cellElement.TryGetProperty("IsError", out property2)) && property2.ToObject(Format.Options) is bool error)
+                        {
+                            cell3.IsError = error;
+                        }
+                    }
+                    else
+                    {
+                        cell3 = CreateCell();
+                        cell3.Value = cellElement.ToObject(Format.Options);
+                        cell3.RawValue = cellElement.GetRawText();
+                    }
+                    return cell3;
+                }
+            }
+
+            protected virtual Cell CreateCell()
+            {
+                return new Cell();
+            }
+
+            protected virtual JsonCell CreateJsonCell(JsonElement element)
+            {
+                return new JsonCell(element);
+            }
+        }
         protected virtual IEnumerable<Sheet> EnumerateCsvSheets(Stream stream, CsvBookFormat format)
         {
             ArgumentNullException.ThrowIfNull(stream);
@@ -372,7 +668,7 @@ namespace SheetReader
                 Reader = reader;
                 Name = element.Attribute("name")?.Value!;
                 var state = element.Attribute("state")?.Value;
-                if (state.EqualsIgnoreCase("hidden"))
+                if (Extensions.EqualsIgnoreCase(state, "hidden"))
                 {
                     IsVisible = false;
                 }
@@ -413,7 +709,7 @@ namespace SheetReader
                                 {
                                     row.Index = rowIndex - 1;
                                     var hidden = Reader.GetAttribute("hidden");
-                                    if (hidden != null && hidden.EqualsIgnoreCase("true") || hidden == "1")
+                                    if (hidden != null && Extensions.EqualsIgnoreCase(hidden, "true") || hidden == "1")
                                     {
                                         row.IsVisible = false;
                                     }
@@ -683,6 +979,10 @@ namespace SheetReader
         public IList<BookDocumentSheet> Sheets => _sheets;
         public virtual bool IsThreadSafe => false;
 
+        protected virtual Book CreateBook() => new();
+        protected virtual BookDocumentSheet CreateSheet(Sheet sheet) => new(sheet);
+        protected virtual IList<BookDocumentSheet> CreateSheets() => [];
+
         public virtual void Load(string filePath, BookFormat? format = null)
         {
             ArgumentNullException.ThrowIfNull(filePath);
@@ -713,9 +1013,358 @@ namespace SheetReader
             }
         }
 
-        protected virtual Book CreateBook() => new();
-        protected virtual BookDocumentSheet CreateSheet(Sheet sheet) => new(sheet);
-        protected virtual IList<BookDocumentSheet> CreateSheets() => [];
+        public virtual void Export(string filePath, ExportOptions options = ExportOptions.None, BookFormat? format = null)
+        {
+            ArgumentNullException.ThrowIfNull(filePath);
+            format ??= BookFormat.GetFromFileExtension(Path.GetExtension(filePath));
+            ArgumentNullException.ThrowIfNull(format);
+            Utilities.Extensions.FileEnsureDirectory(filePath);
+            using var stream = new FileStream(filePath, FileMode.Create, FileAccess.Write, FileShare.ReadWrite);
+            format.IsStreamOwned = true;
+            format.InputFilePath = filePath;
+            Export(stream, options, format);
+        }
+
+        public virtual void Export(Stream stream, ExportOptions options, BookFormat format)
+        {
+            ArgumentNullException.ThrowIfNull(stream);
+            ArgumentNullException.ThrowIfNull(format);
+            if (format is JsonBookFormat json)
+            {
+                ExportAsJson(stream, options, json);
+                return;
+            }
+
+            if (format is CsvBookFormat csv)
+            {
+                ExportAsCsv(stream, options, csv);
+                return;
+            }
+
+            throw new NotSupportedException();
+        }
+
+        protected virtual void ExportAsCsv(Stream stream, ExportOptions options, CsvBookFormat format)
+        {
+            ArgumentNullException.ThrowIfNull(stream);
+            ArgumentNullException.ThrowIfNull(format);
+
+            using var writer = new StreamWriter(stream, Encoding.Unicode);
+            if (Sheets.Count <= 0)
+                return;
+
+            var sheet = Sheets[0];
+            if (!sheet.FirstColumnIndex.HasValue || !sheet.LastColumnIndex.HasValue || !sheet.FirstRowIndex.HasValue || !sheet.LastRowIndex.HasValue)
+                return;
+
+            var firstRowIndex = options.HasFlag(ExportOptions.StartFromFirstRow) ? sheet.FirstRowIndex.Value : 0;
+            for (var rowIndex = firstRowIndex; rowIndex <= sheet.LastRowIndex.Value; rowIndex++)
+            {
+                if (options.HasFlag(ExportOptions.FirstRowIsHeader) && rowIndex == firstRowIndex)
+                    continue;
+
+                sheet.Rows.TryGetValue(rowIndex, out var ro);
+                var firstColumnIndex = options.HasFlag(ExportOptions.StartFromFirstColumn) ? sheet.FirstColumnIndex.Value : 0;
+                for (var columnIndex = firstColumnIndex; columnIndex <= sheet.LastColumnIndex.Value; columnIndex++)
+                {
+                    BookDocumentCell? cell = null;
+                    ro?.Cells.TryGetValue(columnIndex, out cell);
+                    var text = string.Format(CultureInfo.InvariantCulture, "{0}", cell?.Value);
+                    Utilities.Extensions.WriteCsv(writer, text, columnIndex < sheet.LastColumnIndex);
+                    if (columnIndex == sheet.LastColumnIndex)
+                    {
+                        writer.WriteLine();
+                    }
+                }
+            }
+        }
+
+        protected virtual void ExportAsJson(Stream stream, ExportOptions options, JsonBookFormat format)
+        {
+            ArgumentNullException.ThrowIfNull(stream);
+            ArgumentNullException.ThrowIfNull(format);
+
+            var fo = format.WriterOptions;
+            if (options.HasFlag(ExportOptions.JsonIndented))
+            {
+                fo.Indented = true;
+            }
+
+            using var writer = new Utf8JsonWriter(stream, fo);
+            if (Sheets.Count > 0)
+            {
+                if (Sheets.Count == 1)
+                {
+                    writeSheet(Sheets[0]);
+                }
+                else
+                {
+                    writer.WriteStartObject();
+                    writer.WritePropertyName(format.SheetsPropertyName ?? "sheets");
+                    writer.WriteStartArray();
+                    foreach (var sheet in Sheets)
+                    {
+                        writeSheet(sheet);
+                    }
+                    writer.WriteEndArray();
+                    writer.WriteEndObject();
+                }
+            }
+            writer.Flush();
+
+            static bool isDefaultJsonValue(object? value)
+            {
+                if (value == null || Convert.IsDBNull(value))
+                    return true;
+
+                if (value is bool b && !b)
+                    return true;
+
+                if (value is int i && i == 0)
+                    return true;
+
+                if (value is long j && j == 0)
+                    return true;
+
+                if (value is float fl && fl == 0f)
+                    return true;
+
+                if (value is double db && db == 0.0)
+                    return true;
+
+                if (value is decimal dec && dec == 0m)
+                    return true;
+
+                if (value is uint ui && ui == 0)
+                    return true;
+
+                if (value is uint ul && ul == 0)
+                    return true;
+
+                return false;
+            }
+
+            void writeCell(BookDocumentCell? cell)
+            {
+                if (cell != null && cell.IsError)
+                {
+                    writer.WriteStartObject();
+                    writer.WritePropertyName("isError");
+                    writer.WriteBooleanValue(value: true);
+                    if (cell.Value != null)
+                    {
+                        writer.WritePropertyName("value");
+                        writeCell(new BookDocumentCell(new Cell { Value = cell.Value }));
+                    }
+                    writer.WriteEndObject();
+                    return;
+                }
+
+                if (cell == null || cell.Value == null || Convert.IsDBNull(cell.Value))
+                {
+                    writer.WriteNullValue();
+                    return;
+                }
+
+                if (cell.Value is string s)
+                {
+                    writer.WriteStringValue(s);
+                    return;
+                }
+
+                if (cell.Value is bool b)
+                {
+                    writer.WriteBooleanValue(b);
+                    return;
+                }
+
+                if (cell.Value is int i32)
+                {
+                    writer.WriteNumberValue(i32);
+                    return;
+                }
+
+                if (cell.Value is long l)
+                {
+                    writer.WriteNumberValue(l);
+                    return;
+                }
+
+                if (cell.Value is uint ui)
+                {
+                    writer.WriteNumberValue(ui);
+                    return;
+                }
+
+                if (cell.Value is ulong ul)
+                {
+                    writer.WriteNumberValue(ul);
+                    return;
+                }
+
+                if (cell.Value is float flt)
+                {
+                    writer.WriteNumberValue(flt);
+                    return;
+                }
+
+                if (cell.Value is double dbl)
+                {
+                    writer.WriteNumberValue(dbl);
+                    return;
+                }
+
+                if (cell.Value is decimal dec)
+                {
+                    writer.WriteNumberValue(dec);
+                    return;
+                }
+
+                if (cell.Value is byte[] bytes)
+                {
+                    writer.WriteBase64StringValue(bytes);
+                    return;
+                }
+
+                s = string.Format(CultureInfo.InvariantCulture, "{0}", cell.Value);
+                writer.WriteStringValue(s);
+            }
+
+            void writeRow(BookDocumentSheet sheet, BookDocumentRow? row)
+            {
+                writer.WriteStartArray();
+                if (sheet.FirstColumnIndex.HasValue && sheet.LastColumnIndex.HasValue)
+                {
+                    var firstColumnIndex = options.HasFlag(ExportOptions.StartFromFirstColumn) ? sheet.FirstColumnIndex.Value : 0;
+                    for (var columnIndex = firstColumnIndex; columnIndex <= sheet.LastColumnIndex.Value; columnIndex++)
+                    {
+                        BookDocumentCell? cell = null;
+                        row?.Cells.TryGetValue(columnIndex, out cell);
+                        writeCell(cell);
+                    }
+                }
+                writer.WriteEndArray();
+            }
+
+            void writeRowAsObjects(BookDocumentSheet sheet, BookDocumentRow? row, Dictionary<int, string> colNames)
+            {
+                writer.WriteStartObject();
+                if (sheet.FirstColumnIndex.HasValue && sheet.LastColumnIndex.HasValue)
+                {
+                    for (var columnIndex = sheet.FirstColumnIndex.Value; columnIndex <= sheet.LastColumnIndex.Value; columnIndex++)
+                    {
+                        BookDocumentCell? cell = null;
+                        row?.Cells.TryGetValue(columnIndex, out cell);
+                        if (!options.HasFlag(ExportOptions.JsonNoDefaultCellValues) || (cell != null && !isDefaultJsonValue(cell.Value)))
+                        {
+                            string colName = colNames[columnIndex];
+                            writer.WritePropertyName(colName);
+                            writeCell(cell);
+                        }
+                    }
+                }
+                writer.WriteEndObject();
+            }
+
+            void writeSheet(BookDocumentSheet sheet)
+            {
+                if (sheet.FirstColumnIndex.HasValue && sheet.LastColumnIndex.HasValue)
+                {
+                    if (sheet.ColumnsHaveBeenGenerated && !options.HasFlag(ExportOptions.JsonRowsAsObject))
+                    {
+                        writer.WriteStartArray();
+                        if (sheet.FirstRowIndex.HasValue && sheet.LastRowIndex.HasValue)
+                        {
+                            var firstRowIndex = options.HasFlag(ExportOptions.StartFromFirstRow) ? sheet.FirstRowIndex.Value : 0;
+                            for (var rowIndex = firstRowIndex; rowIndex <= sheet.LastRowIndex.Value; rowIndex++)
+                            {
+                                if (!options.HasFlag(ExportOptions.FirstRowIsHeader) || rowIndex != firstRowIndex)
+                                {
+                                    sheet.Rows.TryGetValue(rowIndex, out var row2);
+                                    writeRow(sheet, row2);
+                                }
+                            }
+                        }
+                        writer.WriteEndArray();
+                    }
+                    else
+                    {
+                        writer.WriteStartObject();
+                        if (!string.IsNullOrEmpty(sheet.Name))
+                        {
+                            writer.WritePropertyName("name");
+                            writer.WriteStringValue(sheet.Name);
+                        }
+
+                        if (sheet.IsHidden)
+                        {
+                            writer.WritePropertyName("isHidden");
+                            writer.WriteBooleanValue(value: true);
+                        }
+
+                        Dictionary<int, string>? colNames = null;
+                        if (!options.HasFlag(ExportOptions.JsonRowsAsObject))
+                        {
+                            writer.WritePropertyName(format.ColumnsPropertyName ?? "columns");
+                            writer.WriteStartArray();
+                            var firstColumnIndex = options.HasFlag(ExportOptions.StartFromFirstColumn) ? sheet.FirstColumnIndex.Value : 0;
+                            for (var columnIndex = firstColumnIndex; columnIndex <= sheet.LastColumnIndex.Value; columnIndex++)
+                            {
+                                sheet.Columns.TryGetValue(columnIndex, out var col);
+                                writer.WriteStringValue(col?.Name);
+                            }
+                            writer.WriteEndArray();
+                        }
+                        else
+                        {
+                            colNames = [];
+                            for (var columnIndex = sheet.FirstColumnIndex.Value; columnIndex <= sheet.LastColumnIndex.Value; columnIndex++)
+                            {
+                                string? name = null;
+                                if (options.HasFlag(ExportOptions.FirstRowIsHeader) &&
+                                    sheet.FirstRowIndex.HasValue && sheet.Rows.TryGetValue(sheet.FirstRowIndex.Value, out var row) &&
+                                    row != null && row.Cells.TryGetValue(columnIndex, out var cell) &&
+                                    cell != null && cell.Value != null)
+                                {
+                                    name = Extensions.Nullify(string.Format(CultureInfo.InvariantCulture, "{0}", cell.Value));
+                                }
+
+                                if (name == null)
+                                {
+                                    sheet.Columns.TryGetValue(columnIndex, out var col);
+                                    name = col?.Name ?? columnIndex.ToString();
+                                }
+                                colNames[columnIndex] = name;
+                            }
+                        }
+
+                        writer.WritePropertyName(format.RowsPropertyName ?? "rows");
+                        writer.WriteStartArray();
+                        if (sheet.FirstRowIndex.HasValue && sheet.LastRowIndex.HasValue)
+                        {
+                            var firstRowIndex = options.HasFlag(ExportOptions.StartFromFirstRow) ? sheet.FirstRowIndex.Value : 0;
+                            for (var rowIndex = firstRowIndex; rowIndex <= sheet.LastRowIndex.Value; rowIndex++)
+                            {
+                                if (!options.HasFlag(ExportOptions.FirstRowIsHeader) || rowIndex != firstRowIndex)
+                                {
+                                    sheet.Rows.TryGetValue(rowIndex, out var row);
+                                    if (options.HasFlag(ExportOptions.JsonRowsAsObject))
+                                    {
+                                        writeRowAsObjects(sheet, row, colNames!);
+                                    }
+                                    else
+                                    {
+                                        writeRow(sheet, row);
+                                    }
+                                }
+                            }
+                        }
+                        writer.WriteEndArray();
+                        writer.WriteEndObject();
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -730,7 +1379,7 @@ namespace SheetReader
             Value = cell.Value;
         }
 
-        public virtual object? Value { get; }
+        public virtual object? Value { get; set; }
         public virtual bool IsError => this is BookDocumentCellError;
 
         public override string ToString() => Value?.ToString() ?? string.Empty;
@@ -843,9 +1492,29 @@ namespace SheetReader
                     FirstColumnIndex = col.Index;
                 }
             }
+
+            if (_columns.Count == 0)
+            {
+                ColumnsHaveBeenGenerated = true;
+                for (var i = 0; i < _rows[0].Cells.Count; i++)
+                {
+                    var col = new Column { Index = i };
+                    _columns[i] = col;
+                    if (!LastColumnIndex.HasValue || col.Index > LastColumnIndex)
+                    {
+                        LastColumnIndex = col.Index;
+                    }
+
+                    if (!FirstColumnIndex.HasValue || col.Index < FirstColumnIndex)
+                    {
+                        FirstColumnIndex = col.Index;
+                    }
+                }
+            }
         }
 
         public string Name { get; }
+        public bool ColumnsHaveBeenGenerated { get; }
         public bool IsHidden { get; }
         public int? FirstColumnIndex { get; }
         public int? LastColumnIndex { get; }
@@ -893,12 +1562,16 @@ namespace SheetReader
 
         public static BookFormat? GetFromFileExtension(string extension)
         {
-            if (extension.EqualsIgnoreCase(".csv"))
+            if (Extensions.EqualsIgnoreCase(extension, ".csv"))
                 return new CsvBookFormat();
 
-            if (extension.EqualsIgnoreCase(".xlsx"))
+            if (Extensions.EqualsIgnoreCase(extension, ".xlsx"))
                 return new XlsxBookFormat();
 
+            if (Extensions.EqualsIgnoreCase(extension, ".json"))
+            {
+                return new JsonBookFormat();
+            }
             return null;
         }
     }
@@ -911,6 +1584,7 @@ namespace SheetReader
         Automatic,
         Csv,
         Xlsx,
+        Json,
     }
 }
 
@@ -934,7 +1608,7 @@ namespace SheetReader
         public virtual int Index { get; set; }
         public virtual string? Name { get; set; }
 
-        public override string ToString() => Name.Nullify() ?? Index.ToString();
+        public override string ToString() => Extensions.Nullify(Name) ?? Index.ToString();
     }
 }
 
@@ -956,7 +1630,7 @@ namespace SheetReader
 {
     public class CsvReader : IDisposable
     {
-        private readonly List<string> _columns = new();
+        private readonly List<string> _columns = [];
         private Stream? _ownedStream;
         private bool _disposedValue;
 
@@ -1227,6 +1901,55 @@ namespace SheetReader
 
 namespace SheetReader
 {
+    [Flags]
+    public enum ExportOptions
+    {
+        None = 0x0,
+        StartFromFirstColumn = 0x1,
+        StartFromFirstRow = 0x2,
+        FirstRowIsHeader = 0x4,
+
+        // json only
+        JsonRowsAsObject = 0x8,
+        JsonNoDefaultCellValues = 0x10,
+        JsonIndented = 0x20
+    }
+}
+
+namespace SheetReader
+{
+    public class JsonBookFormat : BookFormat
+    {
+        public override BookFormatType Type => BookFormatType.Json;
+
+        public virtual bool ReadHeaderRow { get; set; } = true;
+        public virtual JsonBookOptions Options { get; set; } = JsonBookOptions.ParseDates;
+        public virtual string? SheetsPropertyName { get; set; }
+        public virtual string? ColumnsPropertyName { get; set; }
+        public virtual string? RowsPropertyName { get; set; }
+        public virtual JsonWriterOptions WriterOptions { get; set; }
+        public virtual JsonSerializerOptions SerializerOptions { get; set; } = new JsonSerializerOptions
+        {
+            AllowTrailingCommas = true,
+            ReadCommentHandling = JsonCommentHandling.Skip
+        };
+    }
+}
+
+namespace SheetReader
+{
+    [Flags]
+    public enum JsonBookOptions
+    {
+        None = 0x0,
+        ParseDates = 0x1,
+
+        Default = ParseDates,
+    }
+}
+
+namespace SheetReader
+{
     public abstract class Row
     {
         public virtual int Index { get; set; }
@@ -1402,6 +2125,220 @@ namespace SheetReader.Utilities
 
         [return: NotNullIfNotNull(nameof(path))]
         public static string? NormPath(string path) => path?.Replace(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+
+        public static bool FileEnsureDirectory(string path, bool throwOnError = true)
+        {
+            ArgumentNullException.ThrowIfNull(path);
+            if (!Path.IsPathRooted(path))
+            {
+                path = Path.GetFullPath(path);
+            }
+
+            var dir = Path.GetDirectoryName(path);
+            if (dir == null)
+                return false;
+
+            if (Directory.Exists(dir))
+                return true;
+
+            try
+            {
+                Directory.CreateDirectory(dir);
+                return true;
+            }
+            catch
+            {
+                if (throwOnError)
+                    throw;
+
+                return false;
+            }
+        }
+
+        public static bool? GetNullableBoolean(this JsonElement element, string propertyName)
+        {
+            ArgumentNullException.ThrowIfNull(propertyName);
+            if (element.ValueKind != JsonValueKind.Object)
+                return null;
+
+            if (!element.TryGetProperty(propertyName, out var property))
+                return null;
+
+            return property.ValueKind switch
+            {
+                JsonValueKind.False => false,
+                JsonValueKind.True => true,
+                _ => null,
+            };
+        }
+
+        public static string? GetNullifiedString(this JsonElement element, string propertyName)
+        {
+            ArgumentNullException.ThrowIfNull(propertyName);
+            if (element.ValueKind != JsonValueKind.Object)
+                return null;
+
+            if (!element.TryGetProperty(propertyName, out var property))
+                return null;
+
+            if (property.ValueKind == JsonValueKind.String)
+                return property.GetString();
+
+            return property.GetRawText();
+        }
+
+        public static int? GetNullableInt32(this JsonElement element, string propertyName)
+        {
+            ArgumentNullException.ThrowIfNull(propertyName);
+            if (element.ValueKind != JsonValueKind.Object)
+                return null;
+
+            if (!element.TryGetProperty(propertyName, out var property))
+                return null;
+
+            if (property.ValueKind == JsonValueKind.Number)
+            {
+                if (property.TryGetInt32(out var i))
+                    return i;
+
+                return null;
+            }
+
+            var text = property.GetRawText();
+            if (int.TryParse(text, out var value))
+                return value;
+
+            return null;
+        }
+
+        public static object? ToObject(this JsonElement element, JsonBookOptions options)
+        {
+            element.TryConvertToObject(options, out var value);
+            return value;
+        }
+
+        public static bool TryConvertToObject(this JsonElement element, JsonBookOptions options, out object? value)
+        {
+            switch (element.ValueKind)
+            {
+                case JsonValueKind.Null:
+                    value = null;
+                    return true;
+
+                case JsonValueKind.Object:
+                    var dic = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+                    foreach (var child in element.EnumerateObject())
+                    {
+                        if (!child.Value.TryConvertToObject(options, out var childValue))
+                        {
+                            value = null;
+                            return false;
+                        }
+
+                        dic[child.Name] = childValue;
+                    }
+
+                    if (dic.Count == 0)
+                    {
+                        value = null;
+                        return true;
+                    }
+
+                    value = dic;
+                    return true;
+
+                case JsonValueKind.Array:
+                    var objects = new object?[element.GetArrayLength()];
+                    var i = 0;
+                    foreach (var child in element.EnumerateArray())
+                    {
+                        if (!child.TryConvertToObject(options, out var childValue2))
+                        {
+                            value = null;
+                            return false;
+                        }
+                        objects[i++] = childValue2;
+                    }
+                    value = objects;
+                    return true;
+
+                case JsonValueKind.String:
+                    var str = element.ToString();
+                    if (options.HasFlag(JsonBookOptions.ParseDates) && DateTime.TryParseExact(str, ["o", "r", "s"], null, DateTimeStyles.None, out var dt))
+                    {
+                        value = dt;
+                        return true;
+                    }
+                    value = str;
+                    return true;
+
+                case JsonValueKind.Number:
+                    if (element.TryGetInt32(out var i2))
+                    {
+                        value = i2;
+                        return true;
+                    }
+
+                    if (element.TryGetInt64(out var i64))
+                    {
+                        value = i64;
+                        return true;
+                    }
+
+                    if (element.TryGetDecimal(out var dec))
+                    {
+                        value = dec;
+                        return true;
+                    }
+
+                    if (element.TryGetDouble(out var dbl))
+                    {
+                        value = dbl;
+                        return true;
+                    }
+                    break;
+
+                case JsonValueKind.True:
+                    value = true;
+                    return true;
+
+                case JsonValueKind.False:
+                    value = false;
+                    return true;
+            }
+
+            value = null;
+            return false;
+        }
+
+        public static void WriteCsv(TextWriter writer, string cell, bool addSeparator = true, bool forExcel = true)
+        {
+            ArgumentNullException.ThrowIfNull(writer);
+
+            var max = 32758;
+            if (forExcel && cell != null && cell.Length > max)
+            {
+                cell = cell[..max];
+            }
+
+            if (cell != null && cell.IndexOfAny(['\t', '\r', '\n', '"']) >= 0)
+            {
+                writer.Write('"');
+                writer.Write(cell.Replace("\"", "\"\""));
+                writer.Write('"');
+            }
+            else
+            {
+                writer.Write(cell);
+            }
+
+            if (addSeparator)
+            {
+                writer.Write('\t');
+            }
+        }
     }
 }
 
+#pragma warning restore IDE0130 // Namespace does not match folder structure
+#pragma warning restore IDE0079 // Remove unnecessary suppression

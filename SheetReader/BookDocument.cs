@@ -370,7 +370,7 @@ namespace SheetReader
                                     row != null && row.Cells.TryGetValue(columnIndex, out var cell) &&
                                     cell != null && cell.Value != null)
                                 {
-                                    name = string.Format(CultureInfo.InvariantCulture, "{0}", cell.Value).Nullify();
+                                    name = Extensions.Nullify(string.Format(CultureInfo.InvariantCulture, "{0}", cell.Value));
                                 }
 
                                 if (name == null)

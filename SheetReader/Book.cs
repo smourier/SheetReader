@@ -635,7 +635,7 @@ namespace SheetReader
                 Reader = reader;
                 Name = element.Attribute("name")?.Value!;
                 var state = element.Attribute("state")?.Value;
-                if (state.EqualsIgnoreCase("hidden"))
+                if (Extensions.EqualsIgnoreCase(state, "hidden"))
                 {
                     IsVisible = false;
                 }
@@ -676,7 +676,7 @@ namespace SheetReader
                                 {
                                     row.Index = rowIndex - 1;
                                     var hidden = Reader.GetAttribute("hidden");
-                                    if (hidden != null && hidden.EqualsIgnoreCase("true") || hidden == "1")
+                                    if (hidden != null && Extensions.EqualsIgnoreCase(hidden, "true") || hidden == "1")
                                     {
                                         row.IsVisible = false;
                                     }

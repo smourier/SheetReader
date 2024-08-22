@@ -8,7 +8,7 @@ namespace SheetReader
 {
     public class CsvReader : IDisposable
     {
-        private readonly List<string> _columns = new();
+        private readonly List<string> _columns = [];
         private Stream? _ownedStream;
         private bool _disposedValue;
 

@@ -14,12 +14,16 @@ namespace SheetReader
 
         public static BookFormat? GetFromFileExtension(string extension)
         {
-            if (extension.EqualsIgnoreCase(".csv"))
+            if (Extensions.EqualsIgnoreCase(extension, ".csv"))
                 return new CsvBookFormat();
 
-            if (extension.EqualsIgnoreCase(".xlsx"))
+            if (Extensions.EqualsIgnoreCase(extension, ".xlsx"))
                 return new XlsxBookFormat();
 
+            if (Extensions.EqualsIgnoreCase(extension, ".json"))
+            {
+                return new JsonBookFormat();
+            }
             return null;
         }
     }

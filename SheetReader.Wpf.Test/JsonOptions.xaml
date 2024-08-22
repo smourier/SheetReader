@@ -1,0 +1,75 @@
+﻿<Window
+    x:Class="SheetReader.Wpf.Test.JsonOptions"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="Json Options"
+    FocusManager.FocusedElement="{Binding ElementName=AsObjectsCheckBox}"
+    ResizeMode="NoResize"
+    SizeToContent="WidthAndHeight"
+    WindowStartupLocation="CenterOwner">
+    <Grid MinWidth="240" MinHeight="170">
+        <Label
+            Margin="10,10,0,0"
+            HorizontalAlignment="Left"
+            VerticalAlignment="Top"
+            Content="Rows As Objects:" />
+        <CheckBox
+            Margin="160,16,10,0"
+            HorizontalAlignment="Left"
+            VerticalAlignment="Top"
+            VerticalContentAlignment="Center"
+            IsChecked="{Binding AsObjects}" />
+        <Label
+            Margin="10,40,0,0"
+            HorizontalAlignment="Left"
+            VerticalAlignment="Top"
+            Content="First Row Is Header:" />
+        <CheckBox
+            Margin="160,46,90,0"
+            HorizontalAlignment="Left"
+            VerticalAlignment="Top"
+            VerticalContentAlignment="Center"
+            IsChecked="{Binding FirstRowIsHeader}" />
+        <Label
+            Margin="10,70,0,0"
+            HorizontalAlignment="Left"
+            VerticalAlignment="Top"
+            Content="Indented:" />
+        <CheckBox
+            Margin="160,76,90,0"
+            HorizontalAlignment="Left"
+            VerticalAlignment="Top"
+            VerticalContentAlignment="Center"
+            IsChecked="{Binding Indented}" />
+        <Label
+            Margin="10,100,0,0"
+            HorizontalAlignment="Left"
+            VerticalAlignment="Top"
+            Content="No Default Cell Values:" />
+        <CheckBox
+            Margin="160,106,90,0"
+            HorizontalAlignment="Left"
+            VerticalAlignment="Top"
+            VerticalContentAlignment="Center"
+            IsChecked="{Binding NoDefaultCellValues}" />
+        <Button
+            Width="75"
+            Height="23"
+            Margin="0,0,90,10"
+            HorizontalAlignment="Right"
+            VerticalAlignment="Bottom"
+            Click="OnOKClick"
+            Content="OK"
+            IsDefault="True"
+            IsEnabled="{Binding IsValid}" />
+        <Button
+            Width="75"
+            Height="23"
+            Margin="0,40,10,10"
+            HorizontalAlignment="Right"
+            VerticalAlignment="Bottom"
+            Click="OnCancelClick"
+            Content="Cancel"
+            IsCancel="True" />
+    </Grid>
+</Window>

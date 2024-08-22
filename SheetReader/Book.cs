@@ -4,6 +4,7 @@ using System.Globalization;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
+using System.Text.Json;
 using System.Xml;
 using System.Xml.Linq;
 using System.Xml.XPath;
@@ -69,9 +70,300 @@ namespace SheetReader
             if (format is XlsxBookFormat xlsx)
                 return EnumerateXlsxSheets(stream, xlsx);
 
+            if (format is JsonBookFormat json)
+                return EnumerateJsonSheets(stream, json);
+
             throw new NotSupportedException();
         }
 
+        protected virtual JsonSheet CreateJsonSheet(JsonElement element, JsonBookFormat format) => new(element, format);
+        protected virtual IEnumerable<Sheet> EnumerateJsonSheets(Stream stream, JsonBookFormat format)
+        {
+            ArgumentNullException.ThrowIfNull(stream);
+            ArgumentNullException.ThrowIfNull(format);
+
+            var root = JsonSerializer.Deserialize<JsonElement>(stream, format.SerializerOptions);
+            JsonElement? sheets = null;
+            if (format.SheetsPropertyName == null)
+            {
+                if (root.ValueKind == JsonValueKind.Object &&
+                    ((root.TryGetProperty("sheets", out var sheetElement) && sheetElement.ValueKind == JsonValueKind.Array) ||
+                    (root.TryGetProperty("Sheets", out sheetElement) && sheetElement.ValueKind == JsonValueKind.Array)))
+                {
+                    sheets = sheetElement;
+                }
+            }
+            else if (root.ValueKind == JsonValueKind.Object &&
+                root.TryGetProperty(format.SheetsPropertyName, out JsonElement element) && element.ValueKind == JsonValueKind.Array)
+            {
+                sheets = element;
+            }
+
+            if (!sheets.HasValue)
+            {
+                var sheet = CreateJsonSheet(root, format);
+                if (sheet != null)
+                {
+                    readSheet(root, sheet);
+                    yield return sheet;
+                }
+                yield break;
+            }
+
+            foreach (var sheetElement in sheets.Value.EnumerateArray())
+            {
+                var sheet = CreateJsonSheet(sheetElement, format);
+                if (sheet == null)
+                    continue;
+
+                readSheet(sheetElement, sheet);
+                yield return sheet;
+            }
+
+            static void readSheet(JsonElement element, Sheet sheet)
+            {
+                sheet.Name = element.GetNullifiedString("name") ?? element.GetNullifiedString("Name");
+                if (element.GetNullableBoolean("isHidden").GetValueOrDefault() || element.GetNullableBoolean("IsHidden").GetValueOrDefault())
+                {
+                    sheet.IsVisible = false;
+                }
+            }
+        }
+
+        public class JsonSheet : Sheet
+        {
+            private readonly Dictionary<string, int> _columnsFromRows = new(StringComparer.OrdinalIgnoreCase);
+
+            public JsonSheet(JsonElement element, JsonBookFormat format)
+            {
+                ArgumentNullException.ThrowIfNull(format);
+                Element = element;
+                Format = format;
+            }
+
+            public JsonElement Element { get; }
+            public JsonBookFormat Format { get; }
+            public IReadOnlyDictionary<string, int> ColumnsFromRows => _columnsFromRows;
+
+            public virtual int AddOrGetColumnFromRows(string name)
+            {
+                ArgumentNullException.ThrowIfNull(name);
+                if (!_columnsFromRows.TryGetValue(name, out var index))
+                {
+                    index = _columnsFromRows.Count;
+                    _columnsFromRows.Add(name, index);
+                }
+                return index;
+            }
+
+            public override IEnumerable<Column> EnumerateColumns()
+            {
+                var count = 0;
+                foreach (var item in EnumerateDeclaredColumns())
+                {
+                    yield return item;
+                    count++;
+                }
+
+                if (count != 0 || _columnsFromRows.Count <= 0)
+                {
+                    yield break;
+                }
+
+                foreach (var kv in _columnsFromRows)
+                {
+                    yield return new Column { Index = kv.Value, Name = kv.Key };
+                }
+            }
+
+            public virtual IEnumerable<Column> EnumerateDeclaredColumns()
+            {
+                JsonElement columns;
+                if (Format.ColumnsPropertyName == null)
+                {
+                    if (Element.ValueKind != JsonValueKind.Object)
+                        yield break;
+
+                    if (Element.TryGetProperty("columns", out var element2) && element2.ValueKind == JsonValueKind.Array)
+                    {
+                        columns = element2;
+                    }
+                    else
+                    {
+                        if (!Element.TryGetProperty("Columns", out element2) || element2.ValueKind != JsonValueKind.Array)
+                            yield break;
+
+                        columns = element2;
+                    }
+                }
+                else
+                {
+                    if (Element.ValueKind != JsonValueKind.Object || !Element.TryGetProperty(Format.ColumnsPropertyName, out var element) || element.ValueKind != JsonValueKind.Array)
+                        yield break;
+
+                    columns = element;
+                }
+
+                var index = 0;
+                foreach (var columnElement in columns.EnumerateArray())
+                {
+                    var column = CreateColumn();
+                    if (column != null)
+                    {
+                        switch (columnElement.ValueKind)
+                        {
+                            case JsonValueKind.Object:
+                                column.Name = columnElement.GetNullifiedString("name") ?? columnElement.GetNullifiedString("Name");
+                                break;
+
+                            case JsonValueKind.String:
+                                column.Name = columnElement.GetString();
+                                break;
+
+                            case JsonValueKind.Number:
+                                column.Name = columnElement.GetInt64().ToString();
+                                break;
+                        }
+
+                        if (column.Name != null)
+                        {
+                            column.Index = columnElement.GetNullableInt32("index") ?? columnElement.GetNullableInt32("Index").GetValueOrDefault(index);
+                            yield return column;
+                            index++;
+                        }
+                    }
+                }
+            }
+
+            public override IEnumerable<Row> EnumerateRows()
+            {
+                JsonElement rows;
+                if (Format.RowsPropertyName == null)
+                {
+                    if (Element.ValueKind == JsonValueKind.Array)
+                    {
+                        rows = Element;
+                    }
+                    else if (Element.TryGetProperty("rows", out var element) && element.ValueKind == JsonValueKind.Array)
+                    {
+                        rows = element;
+                    }
+                    else
+                    {
+                        if (!Element.TryGetProperty("Rows", out element) || element.ValueKind != JsonValueKind.Array)
+                            yield break;
+
+                        rows = element;
+                    }
+                }
+                else
+                {
+                    if (!Element.TryGetProperty(Format.RowsPropertyName, out var element) || element.ValueKind != JsonValueKind.Array)
+                        yield break;
+
+                    rows = element;
+                }
+
+                var index = 0;
+                foreach (var rowElement in rows.EnumerateArray())
+                {
+                    var row = CreateRow(this, rowElement, Format);
+                    if (row != null)
+                    {
+                        row.Index = index;
+                        index++;
+                        yield return row;
+                    }
+                }
+            }
+
+            protected virtual JsonRow CreateRow(JsonSheet sheet, JsonElement element, JsonBookFormat format) => new(sheet, element, format);
+        }
+
+        public class JsonCell(JsonElement element) : Cell
+        {
+            public JsonElement Element { get; } = element;
+        }
+
+        public class JsonRow : Row
+        {
+            public JsonRow(JsonSheet sheet, JsonElement element, JsonBookFormat format)
+            {
+                ArgumentNullException.ThrowIfNull(sheet);
+                ArgumentNullException.ThrowIfNull(format);
+                Sheet = sheet;
+                Element = element;
+                Format = format;
+            }
+
+            public JsonSheet Sheet { get; }
+            public JsonElement Element { get; }
+            public JsonBookFormat Format { get; }
+
+            public override IEnumerable<Cell> EnumerateCells()
+            {
+                if (Element.ValueKind == JsonValueKind.Array)
+                {
+                    int index = 0;
+                    foreach (JsonElement cellElement2 in Element.EnumerateArray())
+                    {
+                        Cell cell = readCell(cellElement2);
+                        cell.ColumnIndex = index;
+                        yield return cell;
+                        index++;
+                    }
+                }
+                else
+                {
+                    if (Element.ValueKind != JsonValueKind.Object)
+                    {
+                        yield break;
+                    }
+                    foreach (JsonProperty property in Element.EnumerateObject())
+                    {
+                        int index2 = Sheet.AddOrGetColumnFromRows(property.Name);
+                        JsonElement cellElement3 = Element.GetProperty(property.Name);
+                        Cell cell2 = readCell(cellElement3);
+                        cell2.ColumnIndex = index2;
+                        yield return cell2;
+                    }
+                }
+                Cell readCell(JsonElement cellElement)
+                {
+                    Cell cell3;
+                    if (cellElement.ValueKind == JsonValueKind.Object)
+                    {
+                        cell3 = CreateJsonCell(cellElement);
+                        if (cellElement.TryGetProperty("value", out var property2) || cellElement.TryGetProperty("Value", out property2))
+                        {
+                            cell3.Value = Utilities.Extensions.ToObject(property2, Format.Options);
+                            cell3.RawValue = property2.GetRawText();
+                        }
+                        if ((cellElement.TryGetProperty("isError", out property2) || cellElement.TryGetProperty("IsError", out property2)) && property2.ToObject(Format.Options) is bool error)
+                        {
+                            cell3.IsError = error;
+                        }
+                    }
+                    else
+                    {
+                        cell3 = CreateCell();
+                        cell3.Value = cellElement.ToObject(Format.Options);
+                        cell3.RawValue = cellElement.GetRawText();
+                    }
+                    return cell3;
+                }
+            }
+
+            protected virtual Cell CreateCell()
+            {
+                return new Cell();
+            }
+
+            protected virtual JsonCell CreateJsonCell(JsonElement element)
+            {
+                return new JsonCell(element);
+            }
+        }
         protected virtual IEnumerable<Sheet> EnumerateCsvSheets(Stream stream, CsvBookFormat format)
         {
             ArgumentNullException.ThrowIfNull(stream);

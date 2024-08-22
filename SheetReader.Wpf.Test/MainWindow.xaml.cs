@@ -2,6 +2,7 @@
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.IO;
 using System.Linq;
 using System.Reflection;
@@ -15,8 +16,13 @@ using SheetReader.Wpf.Test.Utilities;
 
 namespace SheetReader.Wpf.Test
 {
-    public partial class MainWindow : Window
+    public partial class MainWindow : Window, INotifyPropertyChanged
     {
+        public event PropertyChangedEventHandler? PropertyChanged;
+
+        private string? _fileName;
+        private ConcurrentBookDocument? _book;
+
         public MainWindow()
         {
             InitializeComponent();
@@ -25,8 +31,21 @@ namespace SheetReader.Wpf.Test
             Task.Run(() => Settings.Current.CleanRecentFiles());
         }
 
-        public string? FileName { get; set; }
+        public bool HasFile => FileName != null;
         public ObservableCollection<BookDocumentSheet> Sheets { get; } = [];
+        public string? FileName
+        {
+            get => _fileName;
+            set
+            {
+                if (_fileName == value)
+                    return;
+
+                _fileName = value;
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(FileName)));
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(HasFile)));
+            }
+        }
 
         protected override void OnKeyDown(KeyEventArgs e)
         {
@@ -44,6 +63,8 @@ namespace SheetReader.Wpf.Test
         }
 
         private void OpenWithExcel_Click(object sender, RoutedEventArgs e) => OpenWithExcel();
+        private void ExportAsCsv_Click(object sender, RoutedEventArgs e) => Export(false);
+        private void ExportAsJson_Click(object sender, RoutedEventArgs e) => Export(true);
         private void ClearRecentFiles_Click(object sender, RoutedEventArgs e) => Settings.Current.ClearRecentFiles();
         private void Exit_Click(object sender, RoutedEventArgs e) => Close();
         private void About_Click(object sender, RoutedEventArgs e) => MessageBox.Show(Assembly.GetEntryAssembly()!.GetCustomAttribute<AssemblyTitleAttribute>()!.Title + " - " + (IntPtr.Size == 4 ? "32" : "64") + "-bit" + Environment.NewLine + "Copyright (C) 2021-" + DateTime.Now.Year + " Simon Mourier. All rights reserved.", Assembly.GetEntryAssembly()!.GetCustomAttribute<AssemblyTitleAttribute>()!.Title, MessageBoxButton.OK, MessageBoxImage.Information);
@@ -56,12 +77,73 @@ namespace SheetReader.Wpf.Test
                 CheckPathExists = true,
                 DefaultExt = ".xlsx",
                 RestoreDirectory = true,
-                Filter = "Sheet Files|*.csv;*.xlsx;|All files|*"
+                Filter = "Sheet Files|*.csv;*.xlsx;*.json|All files|*"
             };
             if (ofd.ShowDialog() != true)
                 return;
 
             LoadDocument(ofd.FileName);
+        }
+
+        private void Export(bool json)
+        {
+            if (!HasFile)
+                return;
+
+            string filter;
+            string defaultExt;
+            if (json)
+            {
+                filter = "*.json";
+                defaultExt = ".json";
+            }
+            else
+            {
+                filter = "*.csv";
+                defaultExt = ".csv";
+            }
+
+            var sfd = new SaveFileDialog
+            {
+                CheckPathExists = true,
+                DefaultExt = defaultExt,
+                RestoreDirectory = true,
+                Filter = "Sheet Files|" + filter + "|All files|*"
+            };
+
+            if (sfd.ShowDialog() != true)
+                return;
+
+            var options = ExportOptions.None;
+            if (json)
+            {
+                var dlg = new JsonOptions { Owner = this };
+                if (!dlg.ShowDialog().GetValueOrDefault())
+                    return;
+
+                if (dlg.AsObjects)
+                {
+                    options |= ExportOptions.JsonRowsAsObject;
+                }
+
+                if (dlg.FirstRowIsHeader)
+                {
+                    options |= ExportOptions.FirstRowIsHeader;
+                }
+
+                if (dlg.NoDefaultCellValues)
+                {
+                    options |= ExportOptions.JsonNoDefaultCellValues;
+                }
+
+                if (dlg.Indented)
+                {
+                    options |= ExportOptions.JsonIndented;
+                }
+            }
+
+            _book!.Export(sfd.FileName, options);
+            MessageBox.Show("Data was successfully exported to '" + sfd.FileName + "'", Assembly.GetEntryAssembly()!.GetCustomAttribute<AssemblyTitleAttribute>()!.Title, MessageBoxButton.OK, MessageBoxImage.Asterisk);
         }
 
         private void SheetControl_SelectionChanged(object sender, RoutedEventArgs e)
@@ -108,9 +190,9 @@ namespace SheetReader.Wpf.Test
                 try
                 {
                     var format = BookFormat.GetFromFileExtension(Path.GetExtension(filePath)) ?? new CsvBookFormat();
-                    var book = new ConcurrentBookDocument();
-                    book.Load(filePath, format);
-                    foreach (var sheet in book.Sheets)
+                    _book = new ConcurrentBookDocument();
+                    _book.Load(filePath, format);
+                    foreach (var sheet in _book.Sheets)
                     {
                         Sheets.Add(sheet);
                     }

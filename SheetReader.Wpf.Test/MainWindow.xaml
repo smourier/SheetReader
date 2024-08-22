@@ -45,6 +45,8 @@
             </MenuItem>
             <MenuItem Header="_Tools">
                 <MenuItem Click="OpenWithExcel_Click" Header="Open with Excel..." />
+                <MenuItem Click="ExportAsCsv_Click" Header="Export as CSV..." />
+                <MenuItem Click="ExportAsJson_Click" Header="Export as JSON..." />
             </MenuItem>
             <MenuItem Header="_Help">
                 <MenuItem Click="About_Click" Header="About..." />

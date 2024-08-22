@@ -30,7 +30,7 @@ namespace SheetReader.Wpf.Test
 
         [DefaultValue(null)]
         [Browsable(false)]
-        public virtual IList<RecentFile>? RecentFilesPaths { get => GetPropertyValue((IList<RecentFile>?)null); set { SetPropertyValue(value); } }
+        public virtual IList<RecentFile>? RecentFilesPaths { get => GetPropertyValue((IList<RecentFile>?)null); set => SetPropertyValue(value); }
 
         private Dictionary<string, DateTime> GetRecentFiles()
         {

@@ -48,9 +48,29 @@ namespace SheetReader
                     FirstColumnIndex = col.Index;
                 }
             }
+
+            if (_columns.Count == 0)
+            {
+                ColumnsHaveBeenGenerated = true;
+                for (var i = 0; i < _rows[0].Cells.Count; i++)
+                {
+                    var col = new Column { Index = i };
+                    _columns[i] = col;
+                    if (!LastColumnIndex.HasValue || col.Index > LastColumnIndex)
+                    {
+                        LastColumnIndex = col.Index;
+                    }
+
+                    if (!FirstColumnIndex.HasValue || col.Index < FirstColumnIndex)
+                    {
+                        FirstColumnIndex = col.Index;
+                    }
+                }
+            }
         }
 
         public string Name { get; }
+        public bool ColumnsHaveBeenGenerated { get; }
         public bool IsHidden { get; }
         public int? FirstColumnIndex { get; }
         public int? LastColumnIndex { get; }

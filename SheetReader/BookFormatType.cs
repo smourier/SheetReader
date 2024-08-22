@@ -5,5 +5,6 @@
         Automatic,
         Csv,
         Xlsx,
+        Json,
     }
 }

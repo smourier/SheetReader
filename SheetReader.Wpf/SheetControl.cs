@@ -782,7 +782,9 @@ namespace SheetReader.Wpf
                 {
                     // draw col name
                     var colWidth = _control._columnSettings[i].Width;
-                    var name = Row.GetExcelColumnName(i);
+
+                    _control.Sheet.Columns.TryGetValue(i, out var col);
+                    var name = col?.Name ?? Row.GetExcelColumnName(i);
                     var formattedCol = new FormattedText(name, CultureInfo.CurrentCulture, FlowDirection.LeftToRight, context.Typeface, _control.FontSize, _control.Foreground, context.PixelsPerDip)
                     {
                         MaxTextWidth = colWidth,

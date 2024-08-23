@@ -337,10 +337,10 @@ namespace SheetReader.Wpf
 
                                     if (row.Cells.TryGetValue(j, out var cell))
                                     {
-                                        line.Append(cell.Value);
+                                        var text = Sheet.FormatValue(cell.Value);
+                                        line.Append(text);
                                         if (cell.Value != null)
                                         {
-                                            var text = Sheet.FormatValue(cell.Value);
                                             html.Append(WebUtility.HtmlEncode(text));
                                         }
                                     }

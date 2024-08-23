@@ -1,5 +1,5 @@
 # SheetReader
-A simple CSV or XLSX data sheet reader. It doesn't allocate memory for the whole input file (or stream) but reads rows and cells on demand.
+A simple CSV, XLSX or JSON data sheet reader. It doesn't allocate memory for the whole input file (or stream) but reads rows and cells on demand.
 
 Example:
 
@@ -38,3 +38,5 @@ Also supports column resizing (by mouse or programmatically.
 Can be programmatically customized to use different styles (color, alignement, etc.):
 
 ![image](https://github.com/smourier/SheetReader/assets/5328574/dd2d5a2b-fb14-41a2-a116-9ab8d67ec4c4)
+
+It can also  export data back as .JSON or .CSV files.

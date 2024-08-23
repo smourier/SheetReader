@@ -23,12 +23,13 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 /*
-AssemblyVersion: 3.0.0.0
-AssemblyFileVersion: 3.0.0.0
+AssemblyVersion: 3.1.0.0
+AssemblyFileVersion: 3.1.0.0
 */
 using Extensions = SheetReader.Utilities.Extensions;
 using SheetReader.Utilities;
 using System.Collections.Generic;
+using System.Collections;
 using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.IO.Compression;
@@ -153,9 +154,9 @@ namespace SheetReader
                 yield return sheet;
             }
 
-            static void readSheet(JsonElement element, Sheet sheet)
+            void readSheet(JsonElement element, Sheet sheet)
             {
-                sheet.Name = element.GetNullifiedString("name") ?? element.GetNullifiedString("Name");
+                sheet.Name = element.GetNullifiedString("name") ?? element.GetNullifiedString("Name") ?? format.Name;
                 if (element.GetNullableBoolean("isHidden").GetValueOrDefault() || element.GetNullableBoolean("IsHidden").GetValueOrDefault())
                 {
                     sheet.IsVisible = false;
@@ -281,12 +282,31 @@ namespace SheetReader
                     {
                         rows = element;
                     }
+                    else if (Element.TryGetProperty("Rows", out element) && element.ValueKind == JsonValueKind.Array)
+                    {
+                        rows = element;
+                    }
                     else
                     {
-                        if (!Element.TryGetProperty("Rows", out element) || element.ValueKind != JsonValueKind.Array)
+                        var arrayElement = getFirstArrayProperty();
+                        if (arrayElement != null)
+                        {
+                            rows = arrayElement.Value;
+                        }
+                        else
                             yield break;
 
-                        rows = element;
+                        JsonElement? getFirstArrayProperty()
+                        {
+                            if (Element.ValueKind != JsonValueKind.Object)
+                                return null;
+
+                            var first = Element.EnumerateObject().FirstOrDefault(p => p.Value.ValueKind == JsonValueKind.Array).Value;
+                            if (first.ValueKind != JsonValueKind.Array)
+                                return null;
+
+                            return first;
+                        }
                     }
                 }
                 else
@@ -337,10 +357,10 @@ namespace SheetReader
             {
                 if (Element.ValueKind == JsonValueKind.Array)
                 {
-                    int index = 0;
-                    foreach (JsonElement cellElement2 in Element.EnumerateArray())
+                    var index = 0;
+                    foreach (var cellElement2 in Element.EnumerateArray())
                     {
-                        Cell cell = readCell(cellElement2);
+                        var cell = readCell(cellElement2);
                         cell.ColumnIndex = index;
                         yield return cell;
                         index++;
@@ -349,63 +369,61 @@ namespace SheetReader
                 else
                 {
                     if (Element.ValueKind != JsonValueKind.Object)
-                    {
                         yield break;
-                    }
-                    foreach (JsonProperty property in Element.EnumerateObject())
+
+                    foreach (var property in Element.EnumerateObject())
                     {
-                        int index2 = Sheet.AddOrGetColumnFromRows(property.Name);
-                        JsonElement cellElement3 = Element.GetProperty(property.Name);
-                        Cell cell2 = readCell(cellElement3);
-                        cell2.ColumnIndex = index2;
-                        yield return cell2;
+                        var index = Sheet.AddOrGetColumnFromRows(property.Name);
+                        var cellElement = Element.GetProperty(property.Name);
+                        var cell = readCell(cellElement);
+                        cell.ColumnIndex = index;
+                        yield return cell;
                     }
                 }
+
                 Cell readCell(JsonElement cellElement)
                 {
-                    Cell cell3;
+                    Cell cell;
                     if (cellElement.ValueKind == JsonValueKind.Object)
                     {
-                        cell3 = CreateJsonCell(cellElement);
-                        if (cellElement.TryGetProperty("value", out var property2) || cellElement.TryGetProperty("Value", out property2))
+                        cell = CreateJsonCell(cellElement);
+                        if (cellElement.TryGetProperty("value", out var property) || cellElement.TryGetProperty("Value", out property))
                         {
-                            cell3.Value = Utilities.Extensions.ToObject(property2, Format.Options);
-                            cell3.RawValue = property2.GetRawText();
+                            cell.Value = Extensions.ToObject(property, Format.Options);
+                            cell.RawValue = property.GetRawText();
                         }
-                        if ((cellElement.TryGetProperty("isError", out property2) || cellElement.TryGetProperty("IsError", out property2)) && property2.ToObject(Format.Options) is bool error)
+                        else
                         {
-                            cell3.IsError = error;
+                            cell.Value = Extensions.ToObject(cellElement, Format.Options);
+                            cell.RawValue = cellElement.GetRawText();
+                        }
+
+                        if ((cellElement.TryGetProperty("isError", out property) || cellElement.TryGetProperty("IsError", out property)) && Extensions.ToObject(property, Format.Options) is bool error)
+                        {
+                            cell.IsError = error;
                         }
                     }
                     else
                     {
-                        cell3 = CreateCell();
-                        cell3.Value = cellElement.ToObject(Format.Options);
-                        cell3.RawValue = cellElement.GetRawText();
+                        cell = CreateCell();
+                        cell.Value = Extensions.ToObject(cellElement, Format.Options);
+                        cell.RawValue = cellElement.GetRawText();
                     }
-                    return cell3;
+                    return cell;
                 }
             }
 
-            protected virtual Cell CreateCell()
-            {
-                return new Cell();
-            }
-
-            protected virtual JsonCell CreateJsonCell(JsonElement element)
-            {
-                return new JsonCell(element);
-            }
+            protected virtual Cell CreateCell() => new();
+            protected virtual JsonCell CreateJsonCell(JsonElement element) => new(element);
         }
+
         protected virtual IEnumerable<Sheet> EnumerateCsvSheets(Stream stream, CsvBookFormat format)
         {
             ArgumentNullException.ThrowIfNull(stream);
             ArgumentNullException.ThrowIfNull(format);
             var sheet = CreateCsvSheet(stream, format);
             if (sheet != null)
-            {
                 yield return sheet;
-            }
 
             if (format.IsStreamOwned)
             {
@@ -414,7 +432,6 @@ namespace SheetReader
         }
 
         protected virtual CsvSheet CreateCsvSheet(Stream stream, CsvBookFormat format) => new(stream, format);
-
         protected virtual IEnumerable<Sheet> EnumerateXlsxSheets(Stream stream, XlsxBookFormat format)
         {
             ArgumentNullException.ThrowIfNull(stream);
@@ -888,10 +905,7 @@ namespace SheetReader
             {
                 ArgumentNullException.ThrowIfNull(stream);
                 ArgumentNullException.ThrowIfNull(format);
-                if (format.InputFilePath != null)
-                {
-                    Name = Path.GetFileNameWithoutExtension(format.InputFilePath);
-                }
+                Name = format.Name;
                 Reader = new CsvReader(stream, format.AllowCharacterAmbiguity, format.ReadHeaderRow, format.Quote, format.Separator, format.Encoding);
             }
 
@@ -1018,7 +1032,7 @@ namespace SheetReader
             ArgumentNullException.ThrowIfNull(filePath);
             format ??= BookFormat.GetFromFileExtension(Path.GetExtension(filePath));
             ArgumentNullException.ThrowIfNull(format);
-            Utilities.Extensions.FileEnsureDirectory(filePath);
+            Extensions.FileEnsureDirectory(filePath);
             using var stream = new FileStream(filePath, FileMode.Create, FileAccess.Write, FileShare.ReadWrite);
             format.IsStreamOwned = true;
             format.InputFilePath = filePath;
@@ -1057,6 +1071,22 @@ namespace SheetReader
             if (!sheet.FirstColumnIndex.HasValue || !sheet.LastColumnIndex.HasValue || !sheet.FirstRowIndex.HasValue || !sheet.LastRowIndex.HasValue)
                 return;
 
+
+            if (options.HasFlag(ExportOptions.CsvWriteColumns))
+            {
+                var firstColumnIndex = options.HasFlag(ExportOptions.StartFromFirstColumn) ? sheet.FirstColumnIndex.Value : 0;
+                for (var columnIndex = firstColumnIndex; columnIndex <= sheet.LastColumnIndex.Value; columnIndex++)
+                {
+                    sheet.Columns.TryGetValue(columnIndex, out var column);
+                    var name = column?.Name ?? columnIndex.ToString();
+                    Extensions.WriteCsv(writer, name, columnIndex < sheet.LastColumnIndex);
+                    if (columnIndex == sheet.LastColumnIndex)
+                    {
+                        writer.WriteLine();
+                    }
+                }
+            }
+
             var firstRowIndex = options.HasFlag(ExportOptions.StartFromFirstRow) ? sheet.FirstRowIndex.Value : 0;
             for (var rowIndex = firstRowIndex; rowIndex <= sheet.LastRowIndex.Value; rowIndex++)
             {
@@ -1069,8 +1099,8 @@ namespace SheetReader
                 {
                     BookDocumentCell? cell = null;
                     ro?.Cells.TryGetValue(columnIndex, out cell);
-                    var text = string.Format(CultureInfo.InvariantCulture, "{0}", cell?.Value);
-                    Utilities.Extensions.WriteCsv(writer, text, columnIndex < sheet.LastColumnIndex);
+                    var text = sheet.FormatValue(cell?.Value) ?? string.Empty;
+                    Extensions.WriteCsv(writer, text, columnIndex < sheet.LastColumnIndex);
                     if (columnIndex == sheet.LastColumnIndex)
                     {
                         writer.WriteLine();
@@ -1223,6 +1253,30 @@ namespace SheetReader
                 if (cell.Value is byte[] bytes)
                 {
                     writer.WriteBase64StringValue(bytes);
+                    return;
+                }
+
+                if (cell.Value is IDictionary dictionary)
+                {
+                    writer.WriteStartObject();
+                    foreach (DictionaryEntry kv in dictionary)
+                    {
+                        writer.WritePropertyName(kv.Key.ToString()!);
+                        writeCell(new BookDocumentCell(new Cell() { Value = kv.Value }));
+                    }
+                    writer.WriteEndObject();
+                    return;
+                }
+
+                if (cell.Value is Array array && array.Rank == 1)
+                {
+                    writer.WriteStartArray();
+                    for (var i = 0; i < array.Length; i++)
+                    {
+                        var item = array.GetValue(i);
+                        writeCell(new BookDocumentCell(new Cell() { Value = item }));
+                    }
+                    writer.WriteEndArray();
                     return;
                 }
 
@@ -1493,7 +1547,7 @@ namespace SheetReader
                 }
             }
 
-            if (_columns.Count == 0)
+            if (_columns.Count == 0 && _rows.Count > 0)
             {
                 ColumnsHaveBeenGenerated = true;
                 for (var i = 0; i < _rows[0].Cells.Count; i++)
@@ -1542,6 +1596,61 @@ namespace SheetReader
             return cell;
         }
 
+        public virtual string? FormatValue(object? value)
+        {
+            if (value is null)
+                return null;
+
+            if (value is string s)
+                return s;
+
+            if (value is IDictionary dictionary)
+            {
+                var sb = new StringBuilder("{");
+                var first = true;
+                foreach (DictionaryEntry kv in dictionary)
+                {
+                    if (first)
+                    {
+                        first = !first;
+                    }
+                    else
+                    {
+                        sb.Append(", ");
+                    }
+
+                    sb.Append(kv.Key);
+                    sb.Append('=');
+                    sb.Append(FormatValue(kv.Value));
+                }
+                sb.Append('}');
+                return sb.ToString();
+            }
+
+            if (value is Array array && array.Rank == 1)
+            {
+                var sb = new StringBuilder("[");
+                var first = true;
+                for (var i = 0; i < array.Length; i++)
+                {
+                    if (first)
+                    {
+                        first = !first;
+                    }
+                    else
+                    {
+                        sb.Append(", ");
+                    }
+
+                    sb.Append(FormatValue(array.GetValue(i)));
+                }
+                sb.Append(']');
+                return sb.ToString();
+            }
+
+            return string.Format(CultureInfo.CurrentCulture, "{0}", value);
+        }
+
         protected virtual BookDocumentRow CreateRow(Row row) => new(row);
         protected virtual IDictionary<int, Column> CreateColumns() => new Dictionary<int, Column>();
         protected virtual IDictionary<int, BookDocumentRow> CreateRows() => new Dictionary<int, BookDocumentRow>();
@@ -1552,6 +1661,8 @@ namespace SheetReader
 {
     public abstract class BookFormat
     {
+        private string? _name;
+
         protected BookFormat()
         {
         }
@@ -1559,8 +1670,47 @@ namespace SheetReader
         public abstract BookFormatType Type { get; }
         public virtual bool IsStreamOwned { get; set; }
         public virtual string? InputFilePath { get; set; }
+        public virtual string? Name
+        {
+            get
+            {
+                if (_name != null)
+                    return _name;
 
-        public static BookFormat? GetFromFileExtension(string extension)
+                if (InputFilePath != null)
+                {
+                    try
+                    {
+                        return Path.GetFileNameWithoutExtension(InputFilePath);
+                    }
+                    catch
+                    {
+                        // continue;
+                    }
+                }
+
+                return null;
+            }
+            set
+            {
+                if (_name == value)
+                    return;
+
+                _name = value;
+            }
+        }
+
+        public static IEnumerable<string> SupportedExtensions
+        {
+            get
+            {
+                yield return ".csv";
+                yield return ".xlsx";
+                yield return ".json";
+            }
+        }
+
+        public static BookFormat? GetFromFileExtension(string? extension)
         {
             if (Extensions.EqualsIgnoreCase(extension, ".csv"))
                 return new CsvBookFormat();
@@ -1912,7 +2062,10 @@ namespace SheetReader
         // json only
         JsonRowsAsObject = 0x8,
         JsonNoDefaultCellValues = 0x10,
-        JsonIndented = 0x20
+        JsonIndented = 0x20,
+
+        // csv only
+        CsvWriteColumns = 0x40,
     }
 }
 

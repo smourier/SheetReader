@@ -43,7 +43,7 @@ namespace SheetReader.Wpf.Test
                     if (recent?.FilePath == null)
                         continue;
 
-                    if (!IOUtilities.PathIsFile(recent.FilePath))
+                    if (!IsValidPath(recent.FilePath))
                         continue;
 
                     dic[recent.FilePath] = recent.LastAccessTime;
@@ -66,6 +66,17 @@ namespace SheetReader.Wpf.Test
             SerializeToConfiguration();
         }
 
+        private static bool IsValidPath(string filePath)
+        {
+            if (!Uri.TryCreate(filePath, UriKind.Absolute, out var uri))
+                return IOUtilities.PathIsFile(filePath);
+
+            if (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps)
+                return true;
+
+            return IOUtilities.PathIsFile(filePath);
+        }
+
         public void CleanRecentFiles() => SaveRecentFiles(GetRecentFiles());
         public void ClearRecentFiles()
         {
@@ -76,7 +87,7 @@ namespace SheetReader.Wpf.Test
         public void AddRecentFile(string filePath)
         {
             ArgumentNullException.ThrowIfNull(filePath);
-            if (!IOUtilities.PathIsFile(filePath))
+            if (!IsValidPath(filePath))
                 return;
 
             var dic = GetRecentFiles();

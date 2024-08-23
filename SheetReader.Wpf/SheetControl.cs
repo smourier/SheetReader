@@ -194,7 +194,7 @@ namespace SheetReader.Wpf
                     {
                         context.RowCol.ColumnIndex = i;
                         var style = GetCellStyle(context, cell);
-                        var ft = style.CreateCellFormattedText(context, cell);
+                        var ft = style.CreateCellFormattedText(Sheet, context, cell);
                         if (ft != null && (!sizes.TryGetValue(i, out var size) || ft.Width > size))
                         {
                             sizes[i] = ft.Width;
@@ -277,10 +277,7 @@ namespace SheetReader.Wpf
             _grid?.InvalidateVisual();
         }
 
-        protected override void OnLostKeyboardFocus(KeyboardFocusChangedEventArgs e)
-        {
-            _grid?.InvalidateVisual();
-        }
+        protected override void OnLostKeyboardFocus(KeyboardFocusChangedEventArgs e) => _grid?.InvalidateVisual();
 
         public override void OnApplyTemplate()
         {
@@ -716,7 +713,13 @@ namespace SheetReader.Wpf
                                 context.ColumnWidth = colWidth;
                                 context.CellWidth = cellWidth;
                                 var style = _control.GetCellStyle(context, cell);
-                                var formattedCell = style.CreateCellFormattedText(context, cell);
+
+                                if (style.Background != null)
+                                {
+                                    drawingContext.DrawRectangle(style.Background, null, new Rect(ccx, currentRowY, colWidth, cellHeight));
+                                }
+
+                                var formattedCell = style.CreateCellFormattedText(_control.Sheet, context, cell);
                                 if (formattedCell != null)
                                 {
                                     var textOffsetY = (context.RowHeight.Value - formattedCell.Height) / 2; // center vertically

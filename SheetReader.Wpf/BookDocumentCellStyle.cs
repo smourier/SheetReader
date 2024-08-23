@@ -13,23 +13,26 @@ namespace SheetReader.Wpf
         public virtual double? FontSize { get; set; }
         public virtual Brush? Foreground { get; set; }
         public virtual TextTrimming? TextTrimming { get; set; }
+        public virtual Brush? Background { get; set; }
         public virtual Brush? ErrorForeground { get; set; }
         public virtual TextAlignment? TextAlignment { get; set; }
 
-        public virtual string? FormatCell(BookDocumentCell cell)
+        public virtual string? FormatCell(BookDocumentSheet sheet, BookDocumentCell cell)
         {
+            ArgumentNullException.ThrowIfNull(sheet);
             ArgumentNullException.ThrowIfNull(cell);
-            return string.Format(CultureInfo.CurrentCulture, "{0}", cell.Value);
+            return sheet.FormatValue(cell.Value);
         }
 
-        public virtual FormattedText? CreateCellFormattedText(StyleContext context, BookDocumentCell cell)
+        public virtual FormattedText? CreateCellFormattedText(BookDocumentSheet sheet, StyleContext context, BookDocumentCell cell)
         {
+            ArgumentNullException.ThrowIfNull(sheet);
             ArgumentNullException.ThrowIfNull(context);
             ArgumentNullException.ThrowIfNull(cell);
             if (cell.Value == null)
                 return null;
 
-            var text = FormatCell(cell);
+            var text = FormatCell(sheet, cell);
             if (string.IsNullOrEmpty(text))
                 return null;
 

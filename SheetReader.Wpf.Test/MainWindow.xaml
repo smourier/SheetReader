@@ -27,6 +27,11 @@
                     Header="_Open"
                     InputGestureText="Ctrl+O" />
                 <MenuItem
+                    Name="MenuOpenFromUrl"
+                    Click="OpenFromUrl_Click"
+                    Header="Open From _Url"
+                    InputGestureText="Ctrl+U" />
+                <MenuItem
                     x:Name="RecentFilesMenuItem"
                     Header="Open _Recent"
                     IsEnabled="False">
@@ -44,9 +49,19 @@
                     InputGestureText="Alt+F4" />
             </MenuItem>
             <MenuItem Header="_Tools">
-                <MenuItem Click="OpenWithExcel_Click" Header="Open with Excel..." />
-                <MenuItem Click="ExportAsCsv_Click" Header="Export as CSV..." />
-                <MenuItem Click="ExportAsJson_Click" Header="Export as JSON..." />
+                <MenuItem
+                    Click="OpenWithDefaultEditor_Click"
+                    Header="Open with Default Editor..."
+                    IsEnabled="{Binding HasFile}" />
+                <Separator />
+                <MenuItem
+                    Click="ExportAsCsv_Click"
+                    Header="Export as CSV..."
+                    IsEnabled="{Binding HasFile}" />
+                <MenuItem
+                    Click="ExportAsJson_Click"
+                    Header="Export as JSON..."
+                    IsEnabled="{Binding HasFile}" />
             </MenuItem>
             <MenuItem Header="_Help">
                 <MenuItem Click="About_Click" Header="About..." />

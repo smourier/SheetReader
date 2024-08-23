@@ -1,0 +1,51 @@
+﻿<Window
+    x:Class="SheetReader.Wpf.Test.CsvOptions"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="Csv Options"
+    ResizeMode="NoResize"
+    SizeToContent="WidthAndHeight"
+    WindowStartupLocation="CenterOwner">
+    <Grid MinWidth="240" MinHeight="110">
+        <Label
+            Margin="10,10,0,0"
+            HorizontalAlignment="Left"
+            VerticalAlignment="Top"
+            Content="Write Columns:" />
+        <CheckBox
+            Margin="160,16,10,0"
+            HorizontalAlignment="Left"
+            VerticalAlignment="Top"
+            VerticalContentAlignment="Center"
+            IsChecked="{Binding CsvWriteColumns}" />
+        <Label
+            Margin="10,40,0,0"
+            HorizontalAlignment="Left"
+            VerticalAlignment="Top"
+            Content="First Row Is Columns:" />
+        <CheckBox
+            Margin="160,46,90,0"
+            HorizontalAlignment="Left"
+            VerticalAlignment="Top"
+            VerticalContentAlignment="Center"
+            IsChecked="{Binding FirstRowIsHeader}" />
+        <Button
+            Width="75"
+            Height="23"
+            Margin="0,0,90,10"
+            HorizontalAlignment="Right"
+            VerticalAlignment="Bottom"
+            Click="OnOKClick"
+            Content="OK"
+            IsDefault="True" />
+        <Button
+            Width="75"
+            Height="23"
+            Margin="0,40,10,10"
+            HorizontalAlignment="Right"
+            VerticalAlignment="Bottom"
+            Click="OnCancelClick"
+            Content="Cancel"
+            IsCancel="True" />
+    </Grid>
+</Window>

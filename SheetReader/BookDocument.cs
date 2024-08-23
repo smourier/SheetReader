@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
@@ -62,7 +63,7 @@ namespace SheetReader
             ArgumentNullException.ThrowIfNull(filePath);
             format ??= BookFormat.GetFromFileExtension(Path.GetExtension(filePath));
             ArgumentNullException.ThrowIfNull(format);
-            Utilities.Extensions.FileEnsureDirectory(filePath);
+            Extensions.FileEnsureDirectory(filePath);
             using var stream = new FileStream(filePath, FileMode.Create, FileAccess.Write, FileShare.ReadWrite);
             format.IsStreamOwned = true;
             format.InputFilePath = filePath;
@@ -101,6 +102,22 @@ namespace SheetReader
             if (!sheet.FirstColumnIndex.HasValue || !sheet.LastColumnIndex.HasValue || !sheet.FirstRowIndex.HasValue || !sheet.LastRowIndex.HasValue)
                 return;
 
+
+            if (options.HasFlag(ExportOptions.CsvWriteColumns))
+            {
+                var firstColumnIndex = options.HasFlag(ExportOptions.StartFromFirstColumn) ? sheet.FirstColumnIndex.Value : 0;
+                for (var columnIndex = firstColumnIndex; columnIndex <= sheet.LastColumnIndex.Value; columnIndex++)
+                {
+                    sheet.Columns.TryGetValue(columnIndex, out var column);
+                    var name = column?.Name ?? columnIndex.ToString();
+                    Extensions.WriteCsv(writer, name, columnIndex < sheet.LastColumnIndex);
+                    if (columnIndex == sheet.LastColumnIndex)
+                    {
+                        writer.WriteLine();
+                    }
+                }
+            }
+
             var firstRowIndex = options.HasFlag(ExportOptions.StartFromFirstRow) ? sheet.FirstRowIndex.Value : 0;
             for (var rowIndex = firstRowIndex; rowIndex <= sheet.LastRowIndex.Value; rowIndex++)
             {
@@ -113,8 +130,8 @@ namespace SheetReader
                 {
                     BookDocumentCell? cell = null;
                     ro?.Cells.TryGetValue(columnIndex, out cell);
-                    var text = string.Format(CultureInfo.InvariantCulture, "{0}", cell?.Value);
-                    Utilities.Extensions.WriteCsv(writer, text, columnIndex < sheet.LastColumnIndex);
+                    var text = sheet.FormatValue(cell?.Value) ?? string.Empty;
+                    Extensions.WriteCsv(writer, text, columnIndex < sheet.LastColumnIndex);
                     if (columnIndex == sheet.LastColumnIndex)
                     {
                         writer.WriteLine();
@@ -267,6 +284,30 @@ namespace SheetReader
                 if (cell.Value is byte[] bytes)
                 {
                     writer.WriteBase64StringValue(bytes);
+                    return;
+                }
+
+                if (cell.Value is IDictionary dictionary)
+                {
+                    writer.WriteStartObject();
+                    foreach (DictionaryEntry kv in dictionary)
+                    {
+                        writer.WritePropertyName(kv.Key.ToString()!);
+                        writeCell(new BookDocumentCell(new Cell() { Value = kv.Value }));
+                    }
+                    writer.WriteEndObject();
+                    return;
+                }
+
+                if (cell.Value is Array array && array.Rank == 1)
+                {
+                    writer.WriteStartArray();
+                    for (var i = 0; i < array.Length; i++)
+                    {
+                        var item = array.GetValue(i);
+                        writeCell(new BookDocumentCell(new Cell() { Value = item }));
+                    }
+                    writer.WriteEndArray();
                     return;
                 }
 

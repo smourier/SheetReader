@@ -1,6 +1,7 @@
 ﻿using System;
 using System.IO;
 using System.Runtime.InteropServices;
+using Microsoft.Win32;
 
 namespace SheetReader.Wpf.Test.Utilities
 {
@@ -184,6 +185,22 @@ namespace SheetReader.Wpf.Test.Utilities
 
                 return false;
             }
+        }
+
+        public static string? GetExtensionFromContentType(string? contentType)
+        {
+            if (contentType == null)
+                return null;
+
+            using var key = Registry.ClassesRoot.OpenSubKey(Path.Combine(@"MIME\Database\Content Type", contentType), false);
+            var ext = key?.GetValue("Extension") as string;
+            if (ext != null)
+                return ext;
+
+            if (contentType.Contains("csv", StringComparison.OrdinalIgnoreCase))
+                return ".csv";
+
+            return null;
         }
 
         [StructLayout(LayoutKind.Sequential)]

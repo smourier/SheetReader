@@ -1,5 +1,6 @@
 ﻿using System.Reflection;
 using System.Runtime.InteropServices;
+using System.Runtime.Versioning;
 
 #if DEBUG
 [assembly: AssemblyConfiguration("DEBUG")]
@@ -15,3 +16,4 @@ using System.Runtime.InteropServices;
 [assembly: AssemblyCulture("")]
 [assembly: ComVisible(false)]
 [assembly: Guid("a51e10cf-4a86-4102-a90e-b2dda115e7a7")]
+[assembly: SupportedOSPlatform("windows")]

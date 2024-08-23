@@ -1,10 +1,13 @@
 ﻿using System;
+using System.Collections;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Net.Http;
 using System.Reflection;
 using System.Threading.Tasks;
 using System.Windows;
@@ -22,13 +25,15 @@ namespace SheetReader.Wpf.Test
 
         private string? _fileName;
         private ConcurrentBookDocument? _book;
+        private static readonly HttpClient _httpClient = new();
 
         public MainWindow()
         {
             InitializeComponent();
             tc.ItemsSource = Sheets;
+            DataContext = this;
 
-            Task.Run(() => Settings.Current.CleanRecentFiles());
+            Task.Run(Settings.Current.CleanRecentFiles);
         }
 
         public bool HasFile => FileName != null;
@@ -57,12 +62,13 @@ namespace SheetReader.Wpf.Test
                 var lastRecent = Settings.Current.RecentFilesPaths?.FirstOrDefault();
                 if (lastRecent != null)
                 {
-                    LoadDocument(lastRecent.FilePath);
+                    LoadDocument(lastRecent);
                 }
             }
         }
 
-        private void OpenWithExcel_Click(object sender, RoutedEventArgs e) => OpenWithExcel();
+        private void OpenWithDefaultEditor_Click(object sender, RoutedEventArgs e) => OpenWithDefaultEditor();
+        private void OpenFromUrl_Click(object sender, RoutedEventArgs e) => OpenFromUrl();
         private void ExportAsCsv_Click(object sender, RoutedEventArgs e) => Export(false);
         private void ExportAsJson_Click(object sender, RoutedEventArgs e) => Export(true);
         private void ClearRecentFiles_Click(object sender, RoutedEventArgs e) => Settings.Current.ClearRecentFiles();
@@ -82,7 +88,7 @@ namespace SheetReader.Wpf.Test
             if (ofd.ShowDialog() != true)
                 return;
 
-            LoadDocument(ofd.FileName);
+            LoadDocument(ofd.FileName, null, null);
         }
 
         private void Export(bool json)
@@ -141,9 +147,35 @@ namespace SheetReader.Wpf.Test
                     options |= ExportOptions.JsonIndented;
                 }
             }
+            else
+            {
+                var dlg = new CsvOptions { Owner = this };
+                if (!dlg.ShowDialog().GetValueOrDefault())
+                    return;
+
+                if (dlg.CsvWriteColumns)
+                {
+                    options |= ExportOptions.CsvWriteColumns;
+                }
+
+                if (dlg.FirstRowIsHeader)
+                {
+                    options |= ExportOptions.FirstRowIsHeader;
+                }
+            }
 
             _book!.Export(sfd.FileName, options);
             MessageBox.Show("Data was successfully exported to '" + sfd.FileName + "'", Assembly.GetEntryAssembly()!.GetCustomAttribute<AssemblyTitleAttribute>()!.Title, MessageBoxButton.OK, MessageBoxImage.Asterisk);
+        }
+
+        private void OpenFromUrl()
+        {
+            var dlg = new OpenUrl() { Owner = this };
+            if (dlg.ShowDialog() != true)
+                return;
+
+            var uri = new Uri(dlg.Url!);
+            _ = LoadDocumentFromUrl(uri);
         }
 
         private void SheetControl_SelectionChanged(object sender, RoutedEventArgs e)
@@ -152,7 +184,7 @@ namespace SheetReader.Wpf.Test
             selection.Text = "Selection:" + sc.Selection.ToString();
         }
 
-        private void OpenWithExcel()
+        private void OpenWithDefaultEditor()
         {
             if (FileName == null)
                 return;
@@ -175,21 +207,80 @@ namespace SheetReader.Wpf.Test
                 {
                     var item = new MenuItem { Header = recent.FilePath };
                     RecentFilesMenuItem.Items.Insert(RecentFilesMenuItem.Items.Count - fixedRecentItemsCount, item);
-                    item.Click += (s, e) => LoadDocument(recent.FilePath);
+                    item.Click += (s, e) => LoadDocument(recent);
                 }
             }
 
             RecentFilesMenuItem.IsEnabled = RecentFilesMenuItem.Items.Count > fixedRecentItemsCount;
         }
 
-        private void LoadDocument(string? filePath)
+        private void LoadDocument(RecentFile recent)
+        {
+            if (!Uri.TryCreate(recent.FilePath, UriKind.Absolute, out var uri) || uri.Scheme == Uri.UriSchemeFile)
+            {
+                LoadDocument(recent.FilePath, null, null);
+            }
+            else
+            {
+                _ = LoadDocumentFromUrl(uri);
+            }
+        }
+
+        private async Task LoadDocumentFromUrl(Uri uri)
+        {
+            var fileName = uri.Segments.Last();
+            var filePath = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"), fileName);
+            IOUtilities.FileEnsureDirectory(filePath);
+
+            var request = new HttpRequestMessage(HttpMethod.Get, uri);
+            using var response = await _httpClient.SendAsync(request).ConfigureAwait(false);
+            response.EnsureSuccessStatusCode();
+
+            string? downloadedFileName = null;
+            if (BookFormat.GetFromFileExtension(Path.GetExtension(filePath)) == null)
+            {
+                var ext = IOUtilities.GetExtensionFromContentType(response.Content.Headers.ContentType?.MediaType);
+                downloadedFileName = response.Content.Headers.ContentDisposition?.FileNameStar ?? response.Content.Headers.ContentDisposition?.FileName;
+                if (downloadedFileName == null)
+                {
+                    downloadedFileName = fileName + ext;
+                }
+                else if (string.IsNullOrEmpty(Path.GetExtension(downloadedFileName)))
+                {
+                    downloadedFileName += ext;
+                }
+            }
+
+            using (var stream = await response.Content.ReadAsStreamAsync().ConfigureAwait(false))
+            {
+                using var file = new FileStream(filePath, FileMode.Create, FileAccess.Write);
+                await stream.CopyToAsync(file).ConfigureAwait(false);
+            }
+
+            if (downloadedFileName != null)
+            {
+                var downloadedFilePath = Path.Combine(Path.GetDirectoryName(filePath)!, downloadedFileName);
+                IOUtilities.FileOverwrite(filePath, downloadedFilePath);
+                IOUtilities.FileDelete(filePath, true, false);
+                filePath = downloadedFilePath;
+            }
+
+            _ = Dispatcher.BeginInvoke(() => LoadDocument(filePath, uri.ToString(), fileName));
+        }
+
+        private void LoadDocument(string? filePath, string? url, string? fileName)
         {
             Sheets.Clear();
             if (filePath != null)
             {
-                try
+                void loadBook()
                 {
                     var format = BookFormat.GetFromFileExtension(Path.GetExtension(filePath)) ?? new CsvBookFormat();
+                    if (fileName != null)
+                    {
+                        format.Name = fileName;
+                    }
+
                     _book = new ConcurrentBookDocument();
                     _book.Load(filePath, format);
                     foreach (var sheet in _book.Sheets)
@@ -197,10 +288,22 @@ namespace SheetReader.Wpf.Test
                         Sheets.Add(sheet);
                     }
                 }
-                catch (Exception ex)
+
+                if (Debugger.IsAttached)
                 {
-                    MessageBox.Show(ex.GetAllMessagesWithDots(), "Error");
-                    return;
+                    loadBook();
+                }
+                else
+                {
+                    try
+                    {
+                        loadBook();
+                    }
+                    catch (Exception ex)
+                    {
+                        MessageBox.Show(ex.GetAllMessagesWithDots(), "Error");
+                        return;
+                    }
                 }
 
                 // not sure why, but with only 1 tab, binding doesn't work...
@@ -213,7 +316,15 @@ namespace SheetReader.Wpf.Test
 
                 Title = "Sheet Reader - " + Path.GetFileName(filePath);
                 FileName = filePath;
-                Settings.Current.AddRecentFile(filePath);
+
+                if (url != null)
+                {
+                    Settings.Current.AddRecentFile(url);
+                }
+                else
+                {
+                    Settings.Current.AddRecentFile(filePath);
+                }
 
                 if (Sheets.Count > 0)
                 {
@@ -222,6 +333,11 @@ namespace SheetReader.Wpf.Test
                     Keyboard.Focus(tabItem);
                     tabItem.MoveFocus(new TraversalRequest(FocusNavigationDirection.Down));
                     tabItem.MoveFocus(new TraversalRequest(FocusNavigationDirection.Next));
+                }
+
+                if (url != null)
+                {
+                    IOUtilities.FileDelete(filePath, true, false);
                 }
             }
             else
@@ -236,7 +352,7 @@ namespace SheetReader.Wpf.Test
             {
                 foreach (var file in files.Where(f => Book.IsSupportedFileExtension(Path.GetExtension(f))))
                 {
-                    LoadDocument(file);
+                    LoadDocument(file, null, null);
                 }
             }
         }
@@ -262,7 +378,7 @@ namespace SheetReader.Wpf.Test
                 var cell = result.Cell;
                 if (cell != null)
                 {
-                    status.Text = $"Cell: {result.RowCol.ExcelReference}: {cell.Value}";
+                    status.Text = $"Cell: {result.RowCol.ExcelReference}: {ctl.Sheet.FormatValue(cell.Value)}";
                     return;
                 }
             }
@@ -290,6 +406,12 @@ namespace SheetReader.Wpf.Test
             {
                 if (!cell.IsError)
                 {
+                    if (cell.Value is IDictionary)
+                        return new BookDocumentStyledCell(cell) { Style = DictionaryStyle.Instance };
+
+                    if (cell.Value is Array)
+                        return new BookDocumentStyledCell(cell) { Style = ArrayStyle.Instance };
+
                     // sample style : green + aligned right when detecting number
                     if (IsNumber(cell.Value) || IsParsableNumber(cell.Value))
                         return new BookDocumentStyledCell(cell) { Style = NumberStyle.Instance };
@@ -345,6 +467,22 @@ namespace SheetReader.Wpf.Test
             public override Brush? Foreground { get => Brushes.Orange; }
             public override TextAlignment? TextAlignment { get => System.Windows.TextAlignment.Right; }
             public override string ToString() => "DateTime";
+        }
+
+        private sealed class ArrayStyle : BookDocumentCellStyle
+        {
+            public static readonly ArrayStyle Instance = new();
+            public override Brush? Background { get => Brushes.LightBlue; }
+            public override TextAlignment? TextAlignment { get => System.Windows.TextAlignment.Center; }
+            public override string ToString() => "Array";
+        }
+
+        private sealed class DictionaryStyle : BookDocumentCellStyle
+        {
+            public static readonly DictionaryStyle Instance = new();
+            public override Brush? Background { get => Brushes.LightCoral; }
+            public override TextAlignment? TextAlignment { get => System.Windows.TextAlignment.Center; }
+            public override string ToString() => "Dictionary";
         }
     }
 }

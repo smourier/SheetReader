@@ -3,7 +3,6 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     Title="Json Options"
-    FocusManager.FocusedElement="{Binding ElementName=AsObjectsCheckBox}"
     ResizeMode="NoResize"
     SizeToContent="WidthAndHeight"
     WindowStartupLocation="CenterOwner">
@@ -60,8 +59,7 @@
             VerticalAlignment="Bottom"
             Click="OnOKClick"
             Content="OK"
-            IsDefault="True"
-            IsEnabled="{Binding IsValid}" />
+            IsDefault="True" />
         <Button
             Width="75"
             Height="23"

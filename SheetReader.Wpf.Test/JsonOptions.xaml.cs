@@ -78,7 +78,7 @@ namespace SheetReader.Wpf.Test
 
         private void OnPropertyChanged([CallerMemberName] string? name = null) => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
 
-        protected override void OnKeyDown(System.Windows.Input.KeyEventArgs e)
+        protected override void OnKeyDown(KeyEventArgs e)
         {
             base.OnKeyDown(e);
             if (e.Key == Key.Escape)

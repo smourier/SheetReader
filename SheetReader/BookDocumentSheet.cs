@@ -1,5 +1,8 @@
 ﻿using System;
+using System.Collections;
 using System.Collections.Generic;
+using System.Globalization;
+using System.Text;
 
 namespace SheetReader
 {
@@ -49,7 +52,7 @@ namespace SheetReader
                 }
             }
 
-            if (_columns.Count == 0)
+            if (_columns.Count == 0 && _rows.Count > 0)
             {
                 ColumnsHaveBeenGenerated = true;
                 for (var i = 0; i < _rows[0].Cells.Count; i++)
@@ -96,6 +99,61 @@ namespace SheetReader
 
             row.Cells.TryGetValue(columnIndex, out var cell);
             return cell;
+        }
+
+        public virtual string? FormatValue(object? value)
+        {
+            if (value is null)
+                return null;
+
+            if (value is string s)
+                return s;
+
+            if (value is IDictionary dictionary)
+            {
+                var sb = new StringBuilder("{");
+                var first = true;
+                foreach (DictionaryEntry kv in dictionary)
+                {
+                    if (first)
+                    {
+                        first = !first;
+                    }
+                    else
+                    {
+                        sb.Append(", ");
+                    }
+
+                    sb.Append(kv.Key);
+                    sb.Append('=');
+                    sb.Append(FormatValue(kv.Value));
+                }
+                sb.Append('}');
+                return sb.ToString();
+            }
+
+            if (value is Array array && array.Rank == 1)
+            {
+                var sb = new StringBuilder("[");
+                var first = true;
+                for (var i = 0; i < array.Length; i++)
+                {
+                    if (first)
+                    {
+                        first = !first;
+                    }
+                    else
+                    {
+                        sb.Append(", ");
+                    }
+
+                    sb.Append(FormatValue(array.GetValue(i)));
+                }
+                sb.Append(']');
+                return sb.ToString();
+            }
+
+            return string.Format(CultureInfo.CurrentCulture, "{0}", value);
         }
 
         protected virtual BookDocumentRow CreateRow(Row row) => new(row);

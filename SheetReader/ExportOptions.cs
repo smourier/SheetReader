@@ -13,6 +13,9 @@ namespace SheetReader
         // json only
         JsonRowsAsObject = 0x8,
         JsonNoDefaultCellValues = 0x10,
-        JsonIndented = 0x20
+        JsonIndented = 0x20,
+
+        // csv only
+        CsvWriteColumns = 0x40,
     }
 }

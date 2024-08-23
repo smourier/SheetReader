@@ -10,11 +10,19 @@
 	</PropertyGroup>
 
 	<ItemGroup>
+	  <ApplicationDefinition Remove="App.xaml" />
+	</ItemGroup>
+
+	<ItemGroup>
 	  <Compile Include="..\SheetReader\Properties\AssemblyVersionInfo.cs" Link="Properties\AssemblyVersionInfo.cs" />
 	</ItemGroup>
 
 	<ItemGroup>
 	  <Content Include="SheetReader.ico" />
+	</ItemGroup>
+
+	<ItemGroup>
+	  <Page Include="App.xaml" />
 	</ItemGroup>
 
 	<ItemGroup>

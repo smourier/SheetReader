@@ -340,7 +340,7 @@ namespace SheetReader.Wpf
                                         line.Append(cell.Value);
                                         if (cell.Value != null)
                                         {
-                                            var text = string.Format("{0}", cell.Value);
+                                            var text = Sheet.FormatValue(cell.Value);
                                             html.Append(WebUtility.HtmlEncode(text));
                                         }
                                     }

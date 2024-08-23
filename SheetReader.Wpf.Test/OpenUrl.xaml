@@ -11,7 +11,7 @@
     SizeToContent="WidthAndHeight"
     WindowStartupLocation="CenterOwner"
     mc:Ignorable="d">
-    <Grid MinWidth="300" MinHeight="80">
+    <Grid MinWidth="300" MinHeight="100">
         <Label
             Margin="10,10,0,0"
             HorizontalAlignment="Left"
@@ -27,6 +27,17 @@
             VerticalContentAlignment="Center"
             Style="{StaticResource ResourceKey=ValidationTextBox}"
             Text="{Binding Url, UpdateSourceTrigger=PropertyChanged, ValidatesOnDataErrors=True}" />
+        <Label
+            Margin="10,40,0,0"
+            HorizontalAlignment="Left"
+            VerticalAlignment="Top"
+            Content="First Row Defines Columns:" />
+        <CheckBox
+            Margin="165,46,90,0"
+            HorizontalAlignment="Left"
+            VerticalAlignment="Top"
+            VerticalContentAlignment="Center"
+            IsChecked="{Binding FirstRowDefinesColumns}" />
         <Button
             Width="75"
             Height="23"

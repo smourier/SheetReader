@@ -101,6 +101,23 @@ namespace SheetReader
 
             if (!sheets.HasValue)
             {
+                if (root.ValueKind == JsonValueKind.Object)
+                {
+                    var count = 0;
+                    foreach (var property in enumerateArrayProperties(root))
+                    {
+                        var propSheet = CreateJsonSheet(property.Value, format);
+                        propSheet.Name = property.Name;
+                        if (propSheet != null)
+                        {
+                            yield return propSheet;
+                            count++;
+                        }
+                    }
+                    if (count != 0)
+                        yield break;
+                }
+
                 var sheet = CreateJsonSheet(root, format);
                 if (sheet != null)
                 {
@@ -126,6 +143,18 @@ namespace SheetReader
                 if (element.GetNullableBoolean("isHidden").GetValueOrDefault() || element.GetNullableBoolean("IsHidden").GetValueOrDefault())
                 {
                     sheet.IsVisible = false;
+                }
+            }
+
+            static IEnumerable<JsonProperty> enumerateArrayProperties(JsonElement element)
+            {
+                if (element.ValueKind != JsonValueKind.Object)
+                    yield break;
+
+                foreach (var property in element.EnumerateObject())
+                {
+                    if (property.Value.ValueKind == JsonValueKind.Array)
+                        yield return property;
                 }
             }
         }
@@ -431,7 +460,7 @@ namespace SheetReader
             using var workbookRelsStream = workbookRelsEntry.Open();
             var workBookRelsDoc = XDocument.Load(workbookRelsStream);
 
-            var wb = CreateXlsxBook(archive, relPath, workBookDoc, workBookRelsDoc);
+            var wb = CreateXlsxBook(format, archive, relPath, workBookDoc, workBookRelsDoc);
             if (wb != null)
             {
                 foreach (var sheet in wb.EnumerateSheets())
@@ -441,16 +470,18 @@ namespace SheetReader
             }
         }
 
-        protected virtual XlsxBook CreateXlsxBook(ZipArchive archive, string relativePath, XDocument workbookDocument, XDocument relsDocument) => new(archive, relativePath, workbookDocument, relsDocument);
+        protected virtual XlsxBook CreateXlsxBook(XlsxBookFormat format, ZipArchive archive, string relativePath, XDocument workbookDocument, XDocument relsDocument) => new(format, archive, relativePath, workbookDocument, relsDocument);
 
         protected class XlsxBook
         {
-            public XlsxBook(ZipArchive archive, string relativePath, XDocument workbookDocument, XDocument relsDocument)
+            public XlsxBook(XlsxBookFormat format, ZipArchive archive, string relativePath, XDocument workbookDocument, XDocument relsDocument)
             {
+                ArgumentNullException.ThrowIfNull(format);
                 ArgumentNullException.ThrowIfNull(archive);
                 ArgumentNullException.ThrowIfNull(relativePath);
                 ArgumentNullException.ThrowIfNull(workbookDocument);
                 ArgumentNullException.ThrowIfNull(relsDocument);
+                Format = format;
                 Archive = archive;
                 RelativePath = relativePath;
                 WorkbookDocument = workbookDocument;
@@ -516,6 +547,7 @@ namespace SheetReader
                 Formats = formats.AsReadOnly();
             }
 
+            public XlsxBookFormat Format { get; }
             public ZipArchive Archive { get; }
             public string RelativePath { get; }
             public XDocument WorkbookDocument { get; }
@@ -524,7 +556,7 @@ namespace SheetReader
             public IReadOnlyDictionary<int, XlsxFormat> Formats { get; }
 
             protected virtual XlsxFormat CreateXlsxFormat(XElement element) => new(this, element);
-            protected virtual XlsxSheet CreateXlsxSheet(XElement element, XmlReader reader) => new(this, element, reader);
+            protected virtual XlsxSheet CreateXlsxSheet(XElement element, XmlReader reader) => new(Format, this, element, reader);
 
             internal static bool IsMainNamespace(string ns) => ns == _main || ns == _oxMain;
             internal static bool IsOpenXml(XElement? element) => element?.Name.Namespace.NamespaceName == _oxMain;
@@ -641,11 +673,13 @@ namespace SheetReader
 
         protected class XlsxSheet : Sheet
         {
-            public XlsxSheet(XlsxBook book, XElement element, XmlReader reader)
+            public XlsxSheet(XlsxBookFormat format, XlsxBook book, XElement element, XmlReader reader)
             {
+                ArgumentNullException.ThrowIfNull(format);
                 ArgumentNullException.ThrowIfNull(book);
                 ArgumentNullException.ThrowIfNull(element);
                 ArgumentNullException.ThrowIfNull(reader);
+                Format = format;
                 Book = book;
                 Element = element;
                 Reader = reader;
@@ -657,6 +691,7 @@ namespace SheetReader
                 }
             }
 
+            public XlsxBookFormat Format { get; }
             public XlsxBook Book { get; }
             public XElement Element { get; }
             public XmlReader Reader { get; }
@@ -665,6 +700,40 @@ namespace SheetReader
             public override IEnumerable<Column> EnumerateColumns() => Columns.Values.OrderBy(c => c.Index);
 
             public override IEnumerable<Row> EnumerateRows()
+            {
+                if (Format.LoadOptions.HasFlag(LoadOptions.FirstRowDefinesColumns))
+                {
+                    var count = 0;
+                    foreach (var row in EnumerateDeclaredRows())
+                    {
+                        if (count == 0)
+                        {
+                            Columns.Clear();
+                            foreach (var cell in row.EnumerateCells())
+                            {
+                                var index = Columns.Count;
+                                var name = string.Format(CultureInfo.InvariantCulture, "{0}", cell.Value).Nullify() ?? index.ToString();
+                                var col = new Column() { Index = index, Name = name };
+                                Columns.Add(index, col);
+                            }
+                        }
+                        else
+                        {
+                            yield return row;
+                        }
+                        count++;
+                    }
+                }
+                else
+                {
+                    foreach (var row in EnumerateDeclaredRows())
+                    {
+                        yield return row;
+                    }
+                }
+            }
+
+            public virtual IEnumerable<Row> EnumerateDeclaredRows()
             {
                 while (Reader.Read())
                 {
@@ -761,7 +830,8 @@ namespace SheetReader
                     ColumnIndex = index - 1;
                 }
 
-                if (row.Sheet.Columns.Count <= ColumnIndex)
+                if (!row.Sheet.Format.LoadOptions.HasFlag(LoadOptions.FirstRowDefinesColumns) &&
+                    row.Sheet.Columns.Count <= ColumnIndex)
                 {
                     if (!row.Sheet.Columns.ContainsKey(ColumnIndex))
                     {
@@ -872,7 +942,7 @@ namespace SheetReader
                 ArgumentNullException.ThrowIfNull(stream);
                 ArgumentNullException.ThrowIfNull(format);
                 Name = format.Name;
-                Reader = new CsvReader(stream, format.AllowCharacterAmbiguity, format.ReadHeaderRow, format.Quote, format.Separator, format.Encoding);
+                Reader = new CsvReader(stream, format.AllowCharacterAmbiguity, format.LoadOptions.HasFlag(LoadOptions.FirstRowDefinesColumns), format.Quote, format.Separator, format.Encoding);
             }
 
             public CsvReader Reader { get; }

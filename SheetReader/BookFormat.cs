@@ -15,6 +15,7 @@ namespace SheetReader
         public abstract BookFormatType Type { get; }
         public virtual bool IsStreamOwned { get; set; }
         public virtual string? InputFilePath { get; set; }
+        public virtual LoadOptions LoadOptions { get; set; }
         public virtual string? Name
         {
             get

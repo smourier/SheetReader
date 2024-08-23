@@ -6,7 +6,6 @@ namespace SheetReader
     {
         public override BookFormatType Type => BookFormatType.Json;
 
-        public virtual bool ReadHeaderRow { get; set; } = true;
         public virtual JsonBookOptions Options { get; set; } = JsonBookOptions.ParseDates;
         public virtual string? SheetsPropertyName { get; set; }
         public virtual string? ColumnsPropertyName { get; set; }

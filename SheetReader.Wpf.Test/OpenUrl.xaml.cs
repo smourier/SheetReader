@@ -10,10 +10,11 @@ namespace SheetReader.Wpf.Test
 {
     public partial class OpenUrl : Window, INotifyPropertyChanged, INotifyDataErrorInfo, IDataErrorInfo
     {
-        private string? _url;
-
         public event PropertyChangedEventHandler? PropertyChanged;
         public event EventHandler<DataErrorsChangedEventArgs>? ErrorsChanged;
+
+        private string? _url;
+        private bool _firstRowDefinesColumns;
 
         public OpenUrl()
         {
@@ -30,6 +31,21 @@ namespace SheetReader.Wpf.Test
                     return;
 
                 _url = value;
+                OnPropertyChanged();
+                OnPropertyChanged(nameof(IsValid));
+                OnErrorsChanged();
+            }
+        }
+
+        public bool FirstRowDefinesColumns
+        {
+            get => _firstRowDefinesColumns;
+            set
+            {
+                if (_firstRowDefinesColumns == value)
+                    return;
+
+                _firstRowDefinesColumns = value;
                 OnPropertyChanged();
                 OnPropertyChanged(nameof(IsValid));
                 OnErrorsChanged();

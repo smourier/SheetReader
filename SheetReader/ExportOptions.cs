@@ -8,7 +8,7 @@ namespace SheetReader
         None = 0x0,
         StartFromFirstColumn = 0x1,
         StartFromFirstRow = 0x2,
-        FirstRowIsHeader = 0x4,
+        FirstRowDefinesColumns = 0x4,
 
         // json only
         JsonRowsAsObject = 0x8,

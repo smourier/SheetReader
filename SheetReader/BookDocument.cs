@@ -121,7 +121,7 @@ namespace SheetReader
             var firstRowIndex = options.HasFlag(ExportOptions.StartFromFirstRow) ? sheet.FirstRowIndex.Value : 0;
             for (var rowIndex = firstRowIndex; rowIndex <= sheet.LastRowIndex.Value; rowIndex++)
             {
-                if (options.HasFlag(ExportOptions.FirstRowIsHeader) && rowIndex == firstRowIndex)
+                if (options.HasFlag(ExportOptions.FirstRowDefinesColumns) && rowIndex == firstRowIndex)
                     continue;
 
                 sheet.Rows.TryGetValue(rowIndex, out var ro);
@@ -363,7 +363,7 @@ namespace SheetReader
                             var firstRowIndex = options.HasFlag(ExportOptions.StartFromFirstRow) ? sheet.FirstRowIndex.Value : 0;
                             for (var rowIndex = firstRowIndex; rowIndex <= sheet.LastRowIndex.Value; rowIndex++)
                             {
-                                if (!options.HasFlag(ExportOptions.FirstRowIsHeader) || rowIndex != firstRowIndex)
+                                if (!options.HasFlag(ExportOptions.FirstRowDefinesColumns) || rowIndex != firstRowIndex)
                                 {
                                     sheet.Rows.TryGetValue(rowIndex, out var row2);
                                     writeRow(sheet, row2);
@@ -406,7 +406,7 @@ namespace SheetReader
                             for (var columnIndex = sheet.FirstColumnIndex.Value; columnIndex <= sheet.LastColumnIndex.Value; columnIndex++)
                             {
                                 string? name = null;
-                                if (options.HasFlag(ExportOptions.FirstRowIsHeader) &&
+                                if (options.HasFlag(ExportOptions.FirstRowDefinesColumns) &&
                                     sheet.FirstRowIndex.HasValue && sheet.Rows.TryGetValue(sheet.FirstRowIndex.Value, out var row) &&
                                     row != null && row.Cells.TryGetValue(columnIndex, out var cell) &&
                                     cell != null && cell.Value != null)
@@ -430,7 +430,7 @@ namespace SheetReader
                             var firstRowIndex = options.HasFlag(ExportOptions.StartFromFirstRow) ? sheet.FirstRowIndex.Value : 0;
                             for (var rowIndex = firstRowIndex; rowIndex <= sheet.LastRowIndex.Value; rowIndex++)
                             {
-                                if (!options.HasFlag(ExportOptions.FirstRowIsHeader) || rowIndex != firstRowIndex)
+                                if (!options.HasFlag(ExportOptions.FirstRowDefinesColumns) || rowIndex != firstRowIndex)
                                 {
                                     sheet.Rows.TryGetValue(rowIndex, out var row);
                                     if (options.HasFlag(ExportOptions.JsonRowsAsObject))

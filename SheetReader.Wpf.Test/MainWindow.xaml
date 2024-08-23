@@ -24,12 +24,12 @@
                 <MenuItem
                     Name="MenuOpen"
                     Click="Open_Click"
-                    Header="_Open"
+                    Header="_Open..."
                     InputGestureText="Ctrl+O" />
                 <MenuItem
                     Name="MenuOpenFromUrl"
                     Click="OpenFromUrl_Click"
-                    Header="Open From _Url"
+                    Header="Open From _Url..."
                     InputGestureText="Ctrl+U" />
                 <MenuItem
                     x:Name="RecentFilesMenuItem"
@@ -52,7 +52,7 @@
                 <MenuItem
                     Click="OpenWithDefaultEditor_Click"
                     Header="Open with Default Editor..."
-                    IsEnabled="{Binding HasFile}" />
+                    IsEnabled="{Binding HasNotTempFile}" />
                 <Separator />
                 <MenuItem
                     Click="ExportAsCsv_Click"

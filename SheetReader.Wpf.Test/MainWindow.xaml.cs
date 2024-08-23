@@ -37,6 +37,7 @@ namespace SheetReader.Wpf.Test
         }
 
         public bool HasFile => FileName != null;
+        public bool HasNotTempFile => FileName != null && !FileName.StartsWith(Path.GetTempPath(), StringComparison.OrdinalIgnoreCase);
         public ObservableCollection<BookDocumentSheet> Sheets { get; } = [];
         public string? FileName
         {
@@ -88,7 +89,17 @@ namespace SheetReader.Wpf.Test
             if (ofd.ShowDialog() != true)
                 return;
 
-            LoadDocument(ofd.FileName, null, null);
+            var dlg = new FileLoadOptions() { Owner = this };
+            if (dlg.ShowDialog() != true)
+                return;
+
+            var options = LoadOptions.None;
+            if (dlg.FirstRowDefinesColumns)
+            {
+                options |= LoadOptions.FirstRowDefinesColumns;
+            }
+
+            LoadDocument(ofd.FileName, options, null, null);
         }
 
         private void Export(bool json)
@@ -120,6 +131,7 @@ namespace SheetReader.Wpf.Test
             if (sfd.ShowDialog() != true)
                 return;
 
+            bool openResult;
             var options = ExportOptions.None;
             if (json)
             {
@@ -127,14 +139,15 @@ namespace SheetReader.Wpf.Test
                 if (!dlg.ShowDialog().GetValueOrDefault())
                     return;
 
+                openResult = dlg.Open;
                 if (dlg.AsObjects)
                 {
                     options |= ExportOptions.JsonRowsAsObject;
                 }
 
-                if (dlg.FirstRowIsHeader)
+                if (dlg.FirstRowDefinesColumns)
                 {
-                    options |= ExportOptions.FirstRowIsHeader;
+                    options |= ExportOptions.FirstRowDefinesColumns;
                 }
 
                 if (dlg.NoDefaultCellValues)
@@ -153,19 +166,27 @@ namespace SheetReader.Wpf.Test
                 if (!dlg.ShowDialog().GetValueOrDefault())
                     return;
 
+                openResult = dlg.Open;
                 if (dlg.CsvWriteColumns)
                 {
                     options |= ExportOptions.CsvWriteColumns;
                 }
 
-                if (dlg.FirstRowIsHeader)
+                if (dlg.FirstRowDefinesColumns)
                 {
-                    options |= ExportOptions.FirstRowIsHeader;
+                    options |= ExportOptions.FirstRowDefinesColumns;
                 }
             }
 
             _book!.Export(sfd.FileName, options);
-            MessageBox.Show("Data was successfully exported to '" + sfd.FileName + "'", Assembly.GetEntryAssembly()!.GetCustomAttribute<AssemblyTitleAttribute>()!.Title, MessageBoxButton.OK, MessageBoxImage.Asterisk);
+            if (openResult)
+            {
+                Extensions.OpenFile(sfd.FileName);
+            }
+            else
+            {
+                MessageBox.Show("Data was successfully exported to '" + sfd.FileName + "'", Assembly.GetEntryAssembly()!.GetCustomAttribute<AssemblyTitleAttribute>()!.Title, MessageBoxButton.OK, MessageBoxImage.Asterisk);
+            }
         }
 
         private void OpenFromUrl()
@@ -174,8 +195,14 @@ namespace SheetReader.Wpf.Test
             if (dlg.ShowDialog() != true)
                 return;
 
+            var options = LoadOptions.None;
+            if (dlg.FirstRowDefinesColumns)
+            {
+                options |= LoadOptions.FirstRowDefinesColumns;
+            }
+
             var uri = new Uri(dlg.Url!);
-            _ = LoadDocumentFromUrl(uri);
+            _ = LoadDocumentFromUrl(uri, options);
         }
 
         private void SheetControl_SelectionChanged(object sender, RoutedEventArgs e)
@@ -216,17 +243,34 @@ namespace SheetReader.Wpf.Test
 
         private void LoadDocument(RecentFile recent)
         {
+            var options = recent.LoadOptions;
+            if (Keyboard.Modifiers.HasFlag(ModifierKeys.Shift))
+            {
+                var dlg = new FileLoadOptions() { Owner = this, FirstRowDefinesColumns = options.HasFlag(LoadOptions.FirstRowDefinesColumns) };
+                if (dlg.ShowDialog() != true)
+                    return;
+
+                if (dlg.FirstRowDefinesColumns)
+                {
+                    options |= LoadOptions.FirstRowDefinesColumns;
+                }
+                else
+                {
+                    options &= ~LoadOptions.FirstRowDefinesColumns;
+                }
+            }
+
             if (!Uri.TryCreate(recent.FilePath, UriKind.Absolute, out var uri) || uri.Scheme == Uri.UriSchemeFile)
             {
-                LoadDocument(recent.FilePath, null, null);
+                LoadDocument(recent.FilePath, options, null, null);
             }
             else
             {
-                _ = LoadDocumentFromUrl(uri);
+                _ = LoadDocumentFromUrl(uri, options);
             }
         }
 
-        private async Task LoadDocumentFromUrl(Uri uri)
+        private async Task LoadDocumentFromUrl(Uri uri, LoadOptions options)
         {
             var fileName = uri.Segments.Last();
             var filePath = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"), fileName);
@@ -265,10 +309,10 @@ namespace SheetReader.Wpf.Test
                 filePath = downloadedFilePath;
             }
 
-            _ = Dispatcher.BeginInvoke(() => LoadDocument(filePath, uri.ToString(), fileName));
+            _ = Dispatcher.BeginInvoke(() => LoadDocument(filePath, options, uri.ToString(), fileName));
         }
 
-        private void LoadDocument(string? filePath, string? url, string? fileName)
+        private void LoadDocument(string? filePath, LoadOptions options, string? url, string? fileName)
         {
             Sheets.Clear();
             if (filePath != null)
@@ -276,9 +320,10 @@ namespace SheetReader.Wpf.Test
                 void loadBook()
                 {
                     var format = BookFormat.GetFromFileExtension(Path.GetExtension(filePath)) ?? new CsvBookFormat();
+                    format.LoadOptions = options;
                     if (fileName != null)
                     {
-                        format.Name = fileName;
+                        format.Name = Path.GetFileNameWithoutExtension(fileName);
                     }
 
                     _book = new ConcurrentBookDocument();
@@ -286,6 +331,13 @@ namespace SheetReader.Wpf.Test
                     foreach (var sheet in _book.Sheets)
                     {
                         Sheets.Add(sheet);
+                    }
+
+                    if (Sheets.Count > 1)
+                    {
+                        // this is so dumb, is there a better way,
+                        tc.SelectedIndex = 1;
+                        Dispatcher.BeginInvoke(() => { tc.SelectedIndex = 0; });
                     }
                 }
 
@@ -319,11 +371,11 @@ namespace SheetReader.Wpf.Test
 
                 if (url != null)
                 {
-                    Settings.Current.AddRecentFile(url);
+                    Settings.Current.AddRecentFile(url, options);
                 }
                 else
                 {
-                    Settings.Current.AddRecentFile(filePath);
+                    Settings.Current.AddRecentFile(filePath, options);
                 }
 
                 if (Sheets.Count > 0)
@@ -348,11 +400,21 @@ namespace SheetReader.Wpf.Test
 
         private void Grid_Drop(object sender, DragEventArgs e)
         {
-            if (e.Data.GetDataPresent(DataFormats.FileDrop) && e.Data.GetData(DataFormats.FileDrop) is string[] files)
+            if (e.Data.GetDataPresent(DataFormats.FileDrop) && e.Data.GetData(DataFormats.FileDrop) is string[] files && files.Length > 0)
             {
+                var dlg = new FileLoadOptions() { Owner = this };
+                if (dlg.ShowDialog() != true)
+                    return;
+
+                var options = LoadOptions.None;
+                if (dlg.FirstRowDefinesColumns)
+                {
+                    options |= LoadOptions.FirstRowDefinesColumns;
+                }
+
                 foreach (var file in files.Where(f => Book.IsSupportedFileExtension(Path.GetExtension(f))))
                 {
-                    LoadDocument(file, null, null);
+                    LoadDocument(file, options, null, null);
                 }
             }
         }

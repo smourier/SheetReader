@@ -9,7 +9,7 @@ namespace SheetReader.Wpf.Test
     {
         public event PropertyChangedEventHandler? PropertyChanged;
 
-        private bool _firstRowIsHeader;
+        private bool _firstRowDefinesColumns;
         private bool _csvWriteColumns;
 
         public CsvOptions()
@@ -22,15 +22,17 @@ namespace SheetReader.Wpf.Test
 #endif
         }
 
-        public bool FirstRowIsHeader
+        public bool Open { get; set; }
+
+        public bool FirstRowDefinesColumns
         {
-            get => _firstRowIsHeader;
+            get => _firstRowDefinesColumns;
             set
             {
-                if (_firstRowIsHeader == value)
+                if (_firstRowDefinesColumns == value)
                     return;
 
-                _firstRowIsHeader = value;
+                _firstRowDefinesColumns = value;
                 OnPropertyChanged();
             }
         }
@@ -63,6 +65,13 @@ namespace SheetReader.Wpf.Test
         private void OnCancelClick(object sender, RoutedEventArgs e) => Close();
         private void OnOKClick(object sender, RoutedEventArgs e)
         {
+            DialogResult = true;
+            Close();
+        }
+
+        private void OnOKOpenClick(object sender, RoutedEventArgs e)
+        {
+            Open = true;
             DialogResult = true;
             Close();
         }

@@ -32,9 +32,9 @@ namespace SheetReader.Wpf.Test
         [Browsable(false)]
         public virtual IList<RecentFile>? RecentFilesPaths { get => GetPropertyValue((IList<RecentFile>?)null); set => SetPropertyValue(value); }
 
-        private Dictionary<string, DateTime> GetRecentFiles()
+        private Dictionary<string, RecentFile> GetRecentFiles()
         {
-            var dic = new Dictionary<string, DateTime>(StringComparer.Ordinal);
+            var dic = new Dictionary<string, RecentFile>(StringComparer.Ordinal);
             var recents = RecentFilesPaths;
             if (recents != null)
             {
@@ -46,15 +46,15 @@ namespace SheetReader.Wpf.Test
                     if (!IsValidPath(recent.FilePath))
                         continue;
 
-                    dic[recent.FilePath] = recent.LastAccessTime;
+                    dic[recent.FilePath] = new RecentFile() { FilePath = recent.FilePath, LastAccessTime = recent.LastAccessTime, LoadOptions = recent.LoadOptions };
                 }
             }
             return dic;
         }
 
-        private void SaveRecentFiles(Dictionary<string, DateTime> dic)
+        private void SaveRecentFiles(Dictionary<string, RecentFile> dic)
         {
-            var list = dic.Select(kv => new RecentFile { FilePath = kv.Key, LastAccessTime = kv.Value }).OrderByDescending(r => r.LastAccessTime).ToList();
+            var list = dic.Select(kv => new RecentFile { FilePath = kv.Key, LastAccessTime = kv.Value.LastAccessTime, LoadOptions = kv.Value.LoadOptions }).OrderByDescending(r => r.LastAccessTime).ToList();
             if (list.Count == 0)
             {
                 RecentFilesPaths = null;
@@ -84,14 +84,14 @@ namespace SheetReader.Wpf.Test
             SerializeToConfiguration();
         }
 
-        public void AddRecentFile(string filePath)
+        public void AddRecentFile(string filePath, LoadOptions options)
         {
             ArgumentNullException.ThrowIfNull(filePath);
             if (!IsValidPath(filePath))
                 return;
 
             var dic = GetRecentFiles();
-            dic[filePath] = DateTime.UtcNow;
+            dic[filePath] = new RecentFile() { FilePath = filePath, LastAccessTime = DateTime.UtcNow, LoadOptions = options };
             SaveRecentFiles(dic);
         }
     }

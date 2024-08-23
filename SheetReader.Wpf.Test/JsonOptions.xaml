@@ -6,14 +6,14 @@
     ResizeMode="NoResize"
     SizeToContent="WidthAndHeight"
     WindowStartupLocation="CenterOwner">
-    <Grid MinWidth="240" MinHeight="170">
+    <Grid MinWidth="320" MinHeight="170">
         <Label
             Margin="10,10,0,0"
             HorizontalAlignment="Left"
             VerticalAlignment="Top"
             Content="Rows As Objects:" />
         <CheckBox
-            Margin="160,16,10,0"
+            Margin="165,16,10,0"
             HorizontalAlignment="Left"
             VerticalAlignment="Top"
             VerticalContentAlignment="Center"
@@ -22,20 +22,20 @@
             Margin="10,40,0,0"
             HorizontalAlignment="Left"
             VerticalAlignment="Top"
-            Content="First Row Is Header:" />
+            Content="First Row Defines Columns:" />
         <CheckBox
-            Margin="160,46,90,0"
+            Margin="165,46,90,0"
             HorizontalAlignment="Left"
             VerticalAlignment="Top"
             VerticalContentAlignment="Center"
-            IsChecked="{Binding FirstRowIsHeader}" />
+            IsChecked="{Binding FirstRowDefinesColumns}" />
         <Label
             Margin="10,70,0,0"
             HorizontalAlignment="Left"
             VerticalAlignment="Top"
             Content="Indented:" />
         <CheckBox
-            Margin="160,76,90,0"
+            Margin="165,76,90,0"
             HorizontalAlignment="Left"
             VerticalAlignment="Top"
             VerticalContentAlignment="Center"
@@ -46,11 +46,19 @@
             VerticalAlignment="Top"
             Content="No Default Cell Values:" />
         <CheckBox
-            Margin="160,106,90,0"
+            Margin="165,106,90,0"
             HorizontalAlignment="Left"
             VerticalAlignment="Top"
             VerticalContentAlignment="Center"
             IsChecked="{Binding NoDefaultCellValues}" />
+        <Button
+            Height="23"
+            Margin="0,0,170,10"
+            Padding="5,0,10,0"
+            HorizontalAlignment="Right"
+            VerticalAlignment="Bottom"
+            Click="OnOKOpenClick"
+            Content="Export And Open" />
         <Button
             Width="75"
             Height="23"
@@ -58,7 +66,7 @@
             HorizontalAlignment="Right"
             VerticalAlignment="Bottom"
             Click="OnOKClick"
-            Content="OK"
+            Content="_Export"
             IsDefault="True" />
         <Button
             Width="75"

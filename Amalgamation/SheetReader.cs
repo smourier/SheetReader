@@ -23,8 +23,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 /*
-AssemblyVersion: 3.1.0.0
-AssemblyFileVersion: 3.1.0.0
+AssemblyVersion: 3.2.0.0
+AssemblyFileVersion: 3.2.0.0
 */
 using Extensions = SheetReader.Utilities.Extensions;
 using SheetReader.Utilities;
@@ -135,6 +135,23 @@ namespace SheetReader
 
             if (!sheets.HasValue)
             {
+                if (root.ValueKind == JsonValueKind.Object)
+                {
+                    var count = 0;
+                    foreach (var property in enumerateArrayProperties(root))
+                    {
+                        var propSheet = CreateJsonSheet(property.Value, format);
+                        propSheet.Name = property.Name;
+                        if (propSheet != null)
+                        {
+                            yield return propSheet;
+                            count++;
+                        }
+                    }
+                    if (count != 0)
+                        yield break;
+                }
+
                 var sheet = CreateJsonSheet(root, format);
                 if (sheet != null)
                 {
@@ -160,6 +177,18 @@ namespace SheetReader
                 if (element.GetNullableBoolean("isHidden").GetValueOrDefault() || element.GetNullableBoolean("IsHidden").GetValueOrDefault())
                 {
                     sheet.IsVisible = false;
+                }
+            }
+
+            static IEnumerable<JsonProperty> enumerateArrayProperties(JsonElement element)
+            {
+                if (element.ValueKind != JsonValueKind.Object)
+                    yield break;
+
+                foreach (var property in element.EnumerateObject())
+                {
+                    if (property.Value.ValueKind == JsonValueKind.Array)
+                        yield return property;
                 }
             }
         }
@@ -465,7 +494,7 @@ namespace SheetReader
             using var workbookRelsStream = workbookRelsEntry.Open();
             var workBookRelsDoc = XDocument.Load(workbookRelsStream);
 
-            var wb = CreateXlsxBook(archive, relPath, workBookDoc, workBookRelsDoc);
+            var wb = CreateXlsxBook(format, archive, relPath, workBookDoc, workBookRelsDoc);
             if (wb != null)
             {
                 foreach (var sheet in wb.EnumerateSheets())
@@ -475,16 +504,18 @@ namespace SheetReader
             }
         }
 
-        protected virtual XlsxBook CreateXlsxBook(ZipArchive archive, string relativePath, XDocument workbookDocument, XDocument relsDocument) => new(archive, relativePath, workbookDocument, relsDocument);
+        protected virtual XlsxBook CreateXlsxBook(XlsxBookFormat format, ZipArchive archive, string relativePath, XDocument workbookDocument, XDocument relsDocument) => new(format, archive, relativePath, workbookDocument, relsDocument);
 
         protected class XlsxBook
         {
-            public XlsxBook(ZipArchive archive, string relativePath, XDocument workbookDocument, XDocument relsDocument)
+            public XlsxBook(XlsxBookFormat format, ZipArchive archive, string relativePath, XDocument workbookDocument, XDocument relsDocument)
             {
+                ArgumentNullException.ThrowIfNull(format);
                 ArgumentNullException.ThrowIfNull(archive);
                 ArgumentNullException.ThrowIfNull(relativePath);
                 ArgumentNullException.ThrowIfNull(workbookDocument);
                 ArgumentNullException.ThrowIfNull(relsDocument);
+                Format = format;
                 Archive = archive;
                 RelativePath = relativePath;
                 WorkbookDocument = workbookDocument;
@@ -550,6 +581,7 @@ namespace SheetReader
                 Formats = formats.AsReadOnly();
             }
 
+            public XlsxBookFormat Format { get; }
             public ZipArchive Archive { get; }
             public string RelativePath { get; }
             public XDocument WorkbookDocument { get; }
@@ -558,7 +590,7 @@ namespace SheetReader
             public IReadOnlyDictionary<int, XlsxFormat> Formats { get; }
 
             protected virtual XlsxFormat CreateXlsxFormat(XElement element) => new(this, element);
-            protected virtual XlsxSheet CreateXlsxSheet(XElement element, XmlReader reader) => new(this, element, reader);
+            protected virtual XlsxSheet CreateXlsxSheet(XElement element, XmlReader reader) => new(Format, this, element, reader);
 
             internal static bool IsMainNamespace(string ns) => ns == _main || ns == _oxMain;
             internal static bool IsOpenXml(XElement? element) => element?.Name.Namespace.NamespaceName == _oxMain;
@@ -675,11 +707,13 @@ namespace SheetReader
 
         protected class XlsxSheet : Sheet
         {
-            public XlsxSheet(XlsxBook book, XElement element, XmlReader reader)
+            public XlsxSheet(XlsxBookFormat format, XlsxBook book, XElement element, XmlReader reader)
             {
+                ArgumentNullException.ThrowIfNull(format);
                 ArgumentNullException.ThrowIfNull(book);
                 ArgumentNullException.ThrowIfNull(element);
                 ArgumentNullException.ThrowIfNull(reader);
+                Format = format;
                 Book = book;
                 Element = element;
                 Reader = reader;
@@ -691,6 +725,7 @@ namespace SheetReader
                 }
             }
 
+            public XlsxBookFormat Format { get; }
             public XlsxBook Book { get; }
             public XElement Element { get; }
             public XmlReader Reader { get; }
@@ -699,6 +734,40 @@ namespace SheetReader
             public override IEnumerable<Column> EnumerateColumns() => Columns.Values.OrderBy(c => c.Index);
 
             public override IEnumerable<Row> EnumerateRows()
+            {
+                if (Format.LoadOptions.HasFlag(LoadOptions.FirstRowDefinesColumns))
+                {
+                    var count = 0;
+                    foreach (var row in EnumerateDeclaredRows())
+                    {
+                        if (count == 0)
+                        {
+                            Columns.Clear();
+                            foreach (var cell in row.EnumerateCells())
+                            {
+                                var index = Columns.Count;
+                                var name = string.Format(CultureInfo.InvariantCulture, "{0}", cell.Value).Nullify() ?? index.ToString();
+                                var col = new Column() { Index = index, Name = name };
+                                Columns.Add(index, col);
+                            }
+                        }
+                        else
+                        {
+                            yield return row;
+                        }
+                        count++;
+                    }
+                }
+                else
+                {
+                    foreach (var row in EnumerateDeclaredRows())
+                    {
+                        yield return row;
+                    }
+                }
+            }
+
+            public virtual IEnumerable<Row> EnumerateDeclaredRows()
             {
                 while (Reader.Read())
                 {
@@ -795,7 +864,8 @@ namespace SheetReader
                     ColumnIndex = index - 1;
                 }
 
-                if (row.Sheet.Columns.Count <= ColumnIndex)
+                if (!row.Sheet.Format.LoadOptions.HasFlag(LoadOptions.FirstRowDefinesColumns) &&
+                    row.Sheet.Columns.Count <= ColumnIndex)
                 {
                     if (!row.Sheet.Columns.ContainsKey(ColumnIndex))
                     {
@@ -906,7 +976,7 @@ namespace SheetReader
                 ArgumentNullException.ThrowIfNull(stream);
                 ArgumentNullException.ThrowIfNull(format);
                 Name = format.Name;
-                Reader = new CsvReader(stream, format.AllowCharacterAmbiguity, format.ReadHeaderRow, format.Quote, format.Separator, format.Encoding);
+                Reader = new CsvReader(stream, format.AllowCharacterAmbiguity, format.LoadOptions.HasFlag(LoadOptions.FirstRowDefinesColumns), format.Quote, format.Separator, format.Encoding);
             }
 
             public CsvReader Reader { get; }
@@ -1090,7 +1160,7 @@ namespace SheetReader
             var firstRowIndex = options.HasFlag(ExportOptions.StartFromFirstRow) ? sheet.FirstRowIndex.Value : 0;
             for (var rowIndex = firstRowIndex; rowIndex <= sheet.LastRowIndex.Value; rowIndex++)
             {
-                if (options.HasFlag(ExportOptions.FirstRowIsHeader) && rowIndex == firstRowIndex)
+                if (options.HasFlag(ExportOptions.FirstRowDefinesColumns) && rowIndex == firstRowIndex)
                     continue;
 
                 sheet.Rows.TryGetValue(rowIndex, out var ro);
@@ -1332,7 +1402,7 @@ namespace SheetReader
                             var firstRowIndex = options.HasFlag(ExportOptions.StartFromFirstRow) ? sheet.FirstRowIndex.Value : 0;
                             for (var rowIndex = firstRowIndex; rowIndex <= sheet.LastRowIndex.Value; rowIndex++)
                             {
-                                if (!options.HasFlag(ExportOptions.FirstRowIsHeader) || rowIndex != firstRowIndex)
+                                if (!options.HasFlag(ExportOptions.FirstRowDefinesColumns) || rowIndex != firstRowIndex)
                                 {
                                     sheet.Rows.TryGetValue(rowIndex, out var row2);
                                     writeRow(sheet, row2);
@@ -1375,7 +1445,7 @@ namespace SheetReader
                             for (var columnIndex = sheet.FirstColumnIndex.Value; columnIndex <= sheet.LastColumnIndex.Value; columnIndex++)
                             {
                                 string? name = null;
-                                if (options.HasFlag(ExportOptions.FirstRowIsHeader) &&
+                                if (options.HasFlag(ExportOptions.FirstRowDefinesColumns) &&
                                     sheet.FirstRowIndex.HasValue && sheet.Rows.TryGetValue(sheet.FirstRowIndex.Value, out var row) &&
                                     row != null && row.Cells.TryGetValue(columnIndex, out var cell) &&
                                     cell != null && cell.Value != null)
@@ -1399,7 +1469,7 @@ namespace SheetReader
                             var firstRowIndex = options.HasFlag(ExportOptions.StartFromFirstRow) ? sheet.FirstRowIndex.Value : 0;
                             for (var rowIndex = firstRowIndex; rowIndex <= sheet.LastRowIndex.Value; rowIndex++)
                             {
-                                if (!options.HasFlag(ExportOptions.FirstRowIsHeader) || rowIndex != firstRowIndex)
+                                if (!options.HasFlag(ExportOptions.FirstRowDefinesColumns) || rowIndex != firstRowIndex)
                                 {
                                     sheet.Rows.TryGetValue(rowIndex, out var row);
                                     if (options.HasFlag(ExportOptions.JsonRowsAsObject))
@@ -1670,6 +1740,7 @@ namespace SheetReader
         public abstract BookFormatType Type { get; }
         public virtual bool IsStreamOwned { get; set; }
         public virtual string? InputFilePath { get; set; }
+        public virtual LoadOptions LoadOptions { get; set; }
         public virtual string? Name
         {
             get
@@ -1769,7 +1840,6 @@ namespace SheetReader
         public override BookFormatType Type => BookFormatType.Csv;
 
         public virtual bool AllowCharacterAmbiguity { get; set; } = false;
-        public virtual bool ReadHeaderRow { get; set; } = true;
         public virtual char Quote { get; set; } = '"';
         public virtual char Separator { get; set; } = ';';
         public virtual Encoding? Encoding { get; set; }
@@ -2057,7 +2127,7 @@ namespace SheetReader
         None = 0x0,
         StartFromFirstColumn = 0x1,
         StartFromFirstRow = 0x2,
-        FirstRowIsHeader = 0x4,
+        FirstRowDefinesColumns = 0x4,
 
         // json only
         JsonRowsAsObject = 0x8,
@@ -2075,7 +2145,6 @@ namespace SheetReader
     {
         public override BookFormatType Type => BookFormatType.Json;
 
-        public virtual bool ReadHeaderRow { get; set; } = true;
         public virtual JsonBookOptions Options { get; set; } = JsonBookOptions.ParseDates;
         public virtual string? SheetsPropertyName { get; set; }
         public virtual string? ColumnsPropertyName { get; set; }
@@ -2098,6 +2167,16 @@ namespace SheetReader
         ParseDates = 0x1,
 
         Default = ParseDates,
+    }
+}
+
+namespace SheetReader
+{
+    [Flags]
+    public enum LoadOptions
+    {
+        None = 0x0,
+        FirstRowDefinesColumns = 0x1, // sometimes, this can be guessed
     }
 }
 

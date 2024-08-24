@@ -11,8 +11,9 @@ namespace SheetReader
         private readonly IDictionary<int, BookDocumentRow> _rows;
         private readonly IDictionary<int, Column> _columns;
 
-        public BookDocumentSheet(Sheet sheet)
+        public BookDocumentSheet(BookDocument book, Sheet sheet)
         {
+            ArgumentNullException.ThrowIfNull(book);
             ArgumentNullException.ThrowIfNull(sheet);
             _rows = CreateRows();
             _columns = CreateColumns();
@@ -22,9 +23,17 @@ namespace SheetReader
             Name = sheet.Name ?? string.Empty;
             IsHidden = !sheet.IsVisible;
 
+            var e = new StateChangedEventArgs(StateChangedType.SheetAdded, this);
+            book.OnStateChanged(this, e);
+            if (e.Cancel)
+                return;
+
             foreach (var row in sheet.EnumerateRows())
             {
-                var rowData = CreateRow(row);
+                var rowData = CreateRow(book, row);
+                if (rowData == null)
+                    continue;
+
                 _rows[row.Index] = rowData;
 
                 if (LastRowIndex == null || row.Index > LastRowIndex)
@@ -36,6 +45,11 @@ namespace SheetReader
                 {
                     FirstRowIndex = row.Index;
                 }
+
+                e = new StateChangedEventArgs(StateChangedType.RowAdded, this, rowData);
+                book.OnStateChanged(this, e);
+                if (e.Cancel)
+                    break;
             }
 
             foreach (var col in sheet.EnumerateColumns())
@@ -50,6 +64,11 @@ namespace SheetReader
                 {
                     FirstColumnIndex = col.Index;
                 }
+
+                e = new StateChangedEventArgs(StateChangedType.ColumnAddded, this, null, col);
+                book.OnStateChanged(this, e);
+                if (e.Cancel)
+                    break;
             }
 
             if (_columns.Count == 0 && _rows.Count > 0)
@@ -68,6 +87,11 @@ namespace SheetReader
                     {
                         FirstColumnIndex = col.Index;
                     }
+
+                    e = new StateChangedEventArgs(StateChangedType.ColumnAddded, this, null, col);
+                    book.OnStateChanged(this, e);
+                    if (e.Cancel)
+                        break;
                 }
             }
         }
@@ -156,7 +180,7 @@ namespace SheetReader
             return string.Format(CultureInfo.CurrentCulture, "{0}", value);
         }
 
-        protected virtual BookDocumentRow CreateRow(Row row) => new(row);
+        protected virtual BookDocumentRow CreateRow(BookDocument book, Row row) => new(book, this, row);
         protected virtual IDictionary<int, Column> CreateColumns() => new Dictionary<int, Column>();
         protected virtual IDictionary<int, BookDocumentRow> CreateRows() => new Dictionary<int, BookDocumentRow>();
     }

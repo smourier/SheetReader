@@ -14,6 +14,8 @@ namespace SheetReader
     {
         private readonly IList<BookDocumentSheet> _sheets;
 
+        public event EventHandler<StateChangedEventArgs>? StateChanged;
+
         public BookDocument()
         {
             _sheets = CreateSheets();
@@ -22,11 +24,11 @@ namespace SheetReader
         }
 
         public IList<BookDocumentSheet> Sheets => _sheets;
-        public virtual bool IsThreadSafe => false;
-
         protected virtual Book CreateBook() => new();
-        protected virtual BookDocumentSheet CreateSheet(Sheet sheet) => new(sheet);
+        protected virtual BookDocumentSheet CreateSheet(Sheet sheet) => new(this, sheet);
         protected virtual IList<BookDocumentSheet> CreateSheets() => [];
+
+        protected virtual internal void OnStateChanged(object sender, StateChangedEventArgs e) => StateChanged?.Invoke(this, e);
 
         public virtual void Load(string filePath, BookFormat? format = null)
         {

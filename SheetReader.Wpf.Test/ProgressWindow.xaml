@@ -1,0 +1,38 @@
+﻿<Window
+    x:Class="SheetReader.Wpf.Test.ProgressWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    Title="Progress"
+    Closing="OnClosing"
+    ResizeMode="NoResize"
+    SizeToContent="WidthAndHeight"
+    WindowStartupLocation="CenterOwner"
+    mc:Ignorable="d">
+    <StackPanel MinWidth="300" Orientation="Vertical">
+        <ProgressBar
+            x:Name="pg"
+            Height="23"
+            Margin="10,10,10,0"
+            HorizontalAlignment="Stretch"
+            VerticalAlignment="Top"
+            IsIndeterminate="True" />
+        <Label
+            x:Name="lbl"
+            Margin="10,5,10,0"
+            HorizontalAlignment="Stretch"
+            VerticalAlignment="Top"
+            HorizontalContentAlignment="Center"
+            Content="..."
+            TextBlock.TextAlignment="Center" />
+        <Button
+            Width="75"
+            Height="23"
+            Margin="0,5,10,10"
+            HorizontalAlignment="Right"
+            VerticalAlignment="Bottom"
+            Content="Cancel"
+            IsCancel="True" />
+    </StackPanel>
+</Window>

@@ -7,8 +7,10 @@ namespace SheetReader
     {
         private readonly IDictionary<int, BookDocumentCell> _cells;
 
-        public BookDocumentRow(Row row)
+        public BookDocumentRow(BookDocument book, BookDocumentSheet sheet, Row row)
         {
+            ArgumentNullException.ThrowIfNull(sheet);
+            ArgumentNullException.ThrowIfNull(book);
             ArgumentNullException.ThrowIfNull(row);
             _cells = CreateCells();
             if (_cells == null)
@@ -33,6 +35,11 @@ namespace SheetReader
                 {
                     FirstCellIndex = row.Index;
                 }
+
+                var e = new StateChangedEventArgs(StateChangedType.CellAdded, sheet, this, null, bdCell);
+                book.OnStateChanged(this, e);
+                if (e.Cancel)
+                    break;
             }
         }
 

@@ -24,7 +24,7 @@ namespace SheetReader.Wpf.Test
         public event PropertyChangedEventHandler? PropertyChanged;
 
         private string? _fileName;
-        private ConcurrentBookDocument? _book;
+        private BookDocument? _book;
         private static readonly HttpClient _httpClient = new();
 
         public MainWindow()
@@ -317,7 +317,7 @@ namespace SheetReader.Wpf.Test
             Sheets.Clear();
             if (filePath != null)
             {
-                void loadBook()
+                bool loadBook()
                 {
                     var format = BookFormat.GetFromFileExtension(Path.GetExtension(filePath)) ?? new CsvBookFormat();
                     format.LoadOptions = options;
@@ -326,8 +326,56 @@ namespace SheetReader.Wpf.Test
                         format.Name = Path.GetFileNameWithoutExtension(fileName);
                     }
 
-                    _book = new ConcurrentBookDocument();
-                    _book.Load(filePath, format);
+                    _book = new StyledBookDocument();
+
+                    if (new FileInfo(filePath).Length > 2_000_000)
+                    {
+                        var dlg = new ProgressWindow() { Owner = this };
+                        var keepRunning = true;
+                        Task.Run(() =>
+                        {
+                            string? currentSheet = null;
+                            var currentRow = 0;
+                            _book.StateChanged += (s, e) =>
+                            {
+                                switch (e.Type)
+                                {
+                                    case StateChangedType.SheetAdded:
+                                        currentSheet = e.Sheet.Name;
+                                        currentRow = 0;
+                                        break;
+
+                                    case StateChangedType.RowAdded:
+                                        if (e.Type == StateChangedType.RowAdded && (currentRow % 1000) == 0)
+                                        {
+                                            dlg.DoProgress($"Sheet '{currentSheet}' rows {currentRow}");
+                                        }
+                                        currentRow++;
+                                        break;
+                                }
+
+                                if (!keepRunning)
+                                {
+                                    e.Cancel = true;
+                                }
+                            };
+
+                            _book.Load(filePath, format);
+                            dlg.DoFinished();
+                        });
+
+                        if (dlg.ShowDialog() == false)
+                        {
+                            keepRunning = false;
+                            Sheets.Clear();
+                            return false;
+                        }
+                    }
+                    else
+                    {
+                        _book.Load(filePath, format);
+                    }
+
                     foreach (var sheet in _book.Sheets)
                     {
                         Sheets.Add(sheet);
@@ -335,21 +383,24 @@ namespace SheetReader.Wpf.Test
 
                     if (Sheets.Count > 1)
                     {
-                        // this is so dumb, is there a better way,
+                        // this is so dumb, is there a better way
                         tc.SelectedIndex = 1;
                         Dispatcher.BeginInvoke(() => { tc.SelectedIndex = 0; });
                     }
+                    return true;
                 }
 
                 if (Debugger.IsAttached)
                 {
-                    loadBook();
+                    if (!loadBook())
+                        return;
                 }
                 else
                 {
                     try
                     {
-                        loadBook();
+                        if (!loadBook())
+                            return;
                     }
                     catch (Exception ex)
                     {
@@ -400,7 +451,9 @@ namespace SheetReader.Wpf.Test
 
         private void Grid_Drop(object sender, DragEventArgs e)
         {
-            if (e.Data.GetDataPresent(DataFormats.FileDrop) && e.Data.GetData(DataFormats.FileDrop) is string[] files && files.Length > 0)
+            if (e.Data.GetDataPresent(DataFormats.FileDrop) &&
+                e.Data.GetData(DataFormats.FileDrop) is string[] files &&
+                files.Any(f => Book.IsSupportedFileExtension(Path.GetExtension(f))))
             {
                 var dlg = new FileLoadOptions() { Owner = this };
                 if (dlg.ShowDialog() != true)
@@ -447,23 +500,20 @@ namespace SheetReader.Wpf.Test
             status.Text = string.Empty;
         }
 
-        private sealed class ConcurrentBookDocument : BookDocument
+        private sealed class StyledBookDocument : BookDocument
         {
-            protected override BookDocumentSheet CreateSheet(Sheet sheet) => new ConcurrentBookDocumentSheet(sheet);
-            public override bool IsThreadSafe => true;
+            protected override BookDocumentSheet CreateSheet(Sheet sheet) => new StyledBookDocumentSheet(this, sheet);
         }
 
-        private sealed class ConcurrentBookDocumentSheet(Sheet sheet) : BookDocumentSheet(sheet)
+        private sealed class StyledBookDocumentSheet(BookDocument book, Sheet sheet) : BookDocumentSheet(book, sheet)
         {
             protected override IDictionary<int, Column> CreateColumns() => new ConcurrentDictionary<int, Column>();
             protected override IDictionary<int, BookDocumentRow> CreateRows() => new ConcurrentDictionary<int, BookDocumentRow>();
-            protected override BookDocumentRow CreateRow(Row row) => new ConcurentBookDocumentRow(row);
+            protected override BookDocumentRow CreateRow(BookDocument book, Row row) => new StyledBookDocumentRow(book, this, row);
         }
 
-        private sealed class ConcurentBookDocumentRow(Row row) : BookDocumentRow(row)
+        private sealed class StyledBookDocumentRow(BookDocument book, BookDocumentSheet sheet, Row row) : BookDocumentRow(book, sheet, row)
         {
-            protected override IDictionary<int, BookDocumentCell> CreateCells() => new ConcurrentDictionary<int, BookDocumentCell>();
-
             protected override BookDocumentCell CreateCell(Cell cell)
             {
                 if (!cell.IsError)

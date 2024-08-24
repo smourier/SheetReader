@@ -24,7 +24,7 @@ Example:
     Console.WriteLine("Visible rows:" + visibleRows);
     Console.WriteLine("Invisible rows:" + invisibleRows);
 
-The code is also available as a single .cs file: [SheetReader.cs](Amalgamation/SheetReader.cs)
+The reader code (not the WPF control and sample) is also available as a single .cs file: [SheetReader.cs](Amalgamation/SheetReader.cs)
 
 There's also a read-only WPF control that allows to see what's been read by the **SheetReader**:
 

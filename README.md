@@ -1,5 +1,5 @@
 # SheetReader
-A simple CSV, XLSX or JSON data sheet reader. It doesn't allocate memory for the whole input file (or stream) but reads rows and cells on demand.
+A simple CSV, XLSX or JSON data sheet reader. In the CSV and XLSX cases, it doesn't allocate memory for the whole input file (or stream) but reads rows and cells on demand.
 
 Example:
 

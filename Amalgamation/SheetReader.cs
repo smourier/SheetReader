@@ -138,15 +138,20 @@ namespace SheetReader
             {
                 if (root.ValueKind == JsonValueKind.Object)
                 {
+                    var props = enumerateArrayProperties(root).ToArray();
                     var count = 0;
-                    foreach (var property in enumerateArrayProperties(root))
+
+                    if (processProperties(props))
                     {
-                        var propSheet = CreateJsonSheet(property.Value, format);
-                        propSheet.Name = property.Name;
-                        if (propSheet != null)
+                        foreach (var property in props)
                         {
-                            yield return propSheet;
-                            count++;
+                            var propSheet = CreateJsonSheet(property.Value, format);
+                            propSheet.Name = property.Name;
+                            if (propSheet != null)
+                            {
+                                yield return propSheet;
+                                count++;
+                            }
                         }
                     }
                     if (count != 0)
@@ -179,6 +184,24 @@ namespace SheetReader
                 {
                     sheet.IsVisible = false;
                 }
+            }
+
+            bool processProperties(IReadOnlyList<JsonProperty> properties)
+            {
+                if (properties.Count <= 1)
+                    return false;
+
+                if (properties.Count == 2)
+                {
+                    var rowsName = Extensions.Nullify(format.RowsPropertyName) ?? "rows";
+                    var columnsName = Extensions.Nullify(format.ColumnsPropertyName) ?? "columns";
+                    if (Extensions.EqualsIgnoreCase(properties[0].Name, columnsName) && Extensions.EqualsIgnoreCase(properties[1].Name, rowsName))
+                        return false;
+
+                    if (Extensions.EqualsIgnoreCase(properties[0].Name, rowsName) && Extensions.EqualsIgnoreCase(properties[1].Name, columnsName))
+                        return false;
+                }
+                return true;
             }
 
             static IEnumerable<JsonProperty> enumerateArrayProperties(JsonElement element)

@@ -712,7 +712,7 @@ namespace SheetReader
                             foreach (var cell in row.EnumerateCells())
                             {
                                 var index = Columns.Count;
-                                var name = string.Format(CultureInfo.InvariantCulture, "{0}", cell.Value).Nullify() ?? index.ToString();
+                                var name = Extensions.Nullify(string.Format(CultureInfo.InvariantCulture, "{0}", cell.Value)) ?? index.ToString();
                                 var col = new Column() { Index = index, Name = name };
                                 Columns.Add(index, col);
                             }

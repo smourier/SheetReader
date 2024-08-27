@@ -23,8 +23,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 /*
-AssemblyVersion: 3.2.0.0
-AssemblyFileVersion: 3.2.0.0
+AssemblyVersion: 3.2.1.0
+AssemblyFileVersion: 3.2.1.0
 */
 using Extensions = SheetReader.Utilities.Extensions;
 using SheetReader.Utilities;

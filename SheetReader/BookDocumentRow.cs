@@ -44,7 +44,7 @@ namespace SheetReader
         }
 
         public int RowIndex { get; }
-        public bool IsHidden { get; }
+        public virtual bool IsHidden { get; }
         public int? FirstCellIndex { get; }
         public int? LastCellIndex { get; }
         public IDictionary<int, BookDocumentCell> Cells => _cells;

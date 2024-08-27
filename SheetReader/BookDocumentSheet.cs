@@ -96,9 +96,9 @@ namespace SheetReader
             }
         }
 
-        public string Name { get; }
+        public virtual string Name { get; }
+        public virtual bool IsHidden { get; }
         public bool ColumnsHaveBeenGenerated { get; }
-        public bool IsHidden { get; }
         public int? FirstColumnIndex { get; }
         public int? LastColumnIndex { get; }
         public int? FirstRowIndex { get; }

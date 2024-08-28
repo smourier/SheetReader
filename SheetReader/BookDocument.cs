@@ -54,6 +54,7 @@ namespace SheetReader
                     var docSheet = CreateSheet(sheet);
                     if (docSheet != null)
                     {
+                        docSheet.Load(this, sheet);
                         _sheets.Add(docSheet);
                     }
                 }

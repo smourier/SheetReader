@@ -27,7 +27,14 @@ namespace SheetReader
             book.OnStateChanged(this, e);
             if (e.Cancel)
                 return;
+        }
 
+        public virtual void Load(BookDocument book, Sheet sheet)
+        {
+            ArgumentNullException.ThrowIfNull(book);
+            ArgumentNullException.ThrowIfNull(sheet);
+
+            StateChangedEventArgs e;
             foreach (var row in sheet.EnumerateRows())
             {
                 var rowData = CreateRow(book, row);
@@ -98,11 +105,11 @@ namespace SheetReader
 
         public virtual string Name { get; }
         public virtual bool IsHidden { get; }
-        public bool ColumnsHaveBeenGenerated { get; }
-        public int? FirstColumnIndex { get; }
-        public int? LastColumnIndex { get; }
-        public int? FirstRowIndex { get; }
-        public int? LastRowIndex { get; }
+        public bool ColumnsHaveBeenGenerated { get; protected set; }
+        public int? FirstColumnIndex { get; protected set; }
+        public int? LastColumnIndex { get; protected set; }
+        public int? FirstRowIndex { get; protected set; }
+        public int? LastRowIndex { get; protected set; }
         public IDictionary<int, BookDocumentRow> Rows => _rows;
         public IDictionary<int, Column> Columns => _columns;
 

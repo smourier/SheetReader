@@ -53,6 +53,9 @@ namespace SheetReader
         protected virtual BookDocumentCell CreateCell(Cell cell)
         {
             ArgumentNullException.ThrowIfNull(cell);
+            if (cell is Book.JsonCell json)
+                return cell.IsError ? new BookDocumentJsonCellError(json) : new BookDocumentJsonCell(json);
+
             return cell.IsError ? new BookDocumentCellError(cell) : new BookDocumentCell(cell);
         }
 

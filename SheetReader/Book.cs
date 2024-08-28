@@ -83,6 +83,7 @@ namespace SheetReader
             ArgumentNullException.ThrowIfNull(format);
 
             var root = JsonSerializer.Deserialize<JsonElement>(stream, format.SerializerOptions);
+            format.RootElement = root;
             JsonElement? sheets = null;
             if (format.SheetsPropertyName == null)
             {
@@ -388,6 +389,19 @@ namespace SheetReader
                 {
                     if (Element.ValueKind != JsonValueKind.Object)
                         yield break;
+
+                    if ((Element.TryGetProperty("cells", out var cellsElement) || Element.TryGetProperty("Cells", out cellsElement)) && cellsElement.ValueKind == JsonValueKind.Array)
+                    {
+                        var index = 0;
+                        foreach (var cellElement in cellsElement.EnumerateArray())
+                        {
+                            var cell = readCell(cellElement);
+                            cell.ColumnIndex = index;
+                            yield return cell;
+                            index++;
+                        }
+                        yield break;
+                    }
 
                     foreach (var property in Element.EnumerateObject())
                     {

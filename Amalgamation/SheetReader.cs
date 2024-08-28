@@ -118,6 +118,7 @@ namespace SheetReader
             ArgumentNullException.ThrowIfNull(format);
 
             var root = JsonSerializer.Deserialize<JsonElement>(stream, format.SerializerOptions);
+            format.RootElement = root;
             JsonElement? sheets = null;
             if (format.SheetsPropertyName == null)
             {
@@ -423,6 +424,19 @@ namespace SheetReader
                 {
                     if (Element.ValueKind != JsonValueKind.Object)
                         yield break;
+
+                    if ((Element.TryGetProperty("cells", out var cellsElement) || Element.TryGetProperty("Cells", out cellsElement)) && cellsElement.ValueKind == JsonValueKind.Array)
+                    {
+                        var index = 0;
+                        foreach (var cellElement in cellsElement.EnumerateArray())
+                        {
+                            var cell = readCell(cellElement);
+                            cell.ColumnIndex = index;
+                            yield return cell;
+                            index++;
+                        }
+                        yield break;
+                    }
 
                     foreach (var property in Element.EnumerateObject())
                     {
@@ -1117,6 +1131,7 @@ namespace SheetReader
                     var docSheet = CreateSheet(sheet);
                     if (docSheet != null)
                     {
+                        docSheet.Load(this, sheet);
                         _sheets.Add(docSheet);
                     }
                 }
@@ -1538,7 +1553,32 @@ namespace SheetReader
 
 namespace SheetReader
 {
-    public class BookDocumentCellError(Cell cell) : BookDocumentCell(cell)
+    public class BookDocumentCellError(Cell cell)
+        : BookDocumentCell(cell)
+    {
+    }
+}
+
+namespace SheetReader
+{
+    // minimize memory
+    public class BookDocumentJsonCell : BookDocumentCell
+    {
+        public BookDocumentJsonCell(Book.JsonCell cell)
+            : base(cell)
+        {
+            ArgumentNullException.ThrowIfNull(cell);
+            Value = cell.Value;
+            Element = cell.Element;
+        }
+
+        public JsonElement Element { get; }
+    }
+}
+
+namespace SheetReader
+{
+    public class BookDocumentJsonCellError(Book.JsonCell cell) : BookDocumentCellError(cell)
     {
     }
 }
@@ -1595,6 +1635,9 @@ namespace SheetReader
         protected virtual BookDocumentCell CreateCell(Cell cell)
         {
             ArgumentNullException.ThrowIfNull(cell);
+            if (cell is Book.JsonCell json)
+                return cell.IsError ? new BookDocumentJsonCellError(json) : new BookDocumentJsonCell(json);
+
             return cell.IsError ? new BookDocumentCellError(cell) : new BookDocumentCell(cell);
         }
 
@@ -1625,7 +1668,14 @@ namespace SheetReader
             book.OnStateChanged(this, e);
             if (e.Cancel)
                 return;
+        }
 
+        public virtual void Load(BookDocument book, Sheet sheet)
+        {
+            ArgumentNullException.ThrowIfNull(book);
+            ArgumentNullException.ThrowIfNull(sheet);
+
+            StateChangedEventArgs e;
             foreach (var row in sheet.EnumerateRows())
             {
                 var rowData = CreateRow(book, row);
@@ -1696,11 +1746,11 @@ namespace SheetReader
 
         public virtual string Name { get; }
         public virtual bool IsHidden { get; }
-        public bool ColumnsHaveBeenGenerated { get; }
-        public int? FirstColumnIndex { get; }
-        public int? LastColumnIndex { get; }
-        public int? FirstRowIndex { get; }
-        public int? LastRowIndex { get; }
+        public bool ColumnsHaveBeenGenerated { get; protected set; }
+        public int? FirstColumnIndex { get; protected set; }
+        public int? LastColumnIndex { get; protected set; }
+        public int? FirstRowIndex { get; protected set; }
+        public int? LastRowIndex { get; protected set; }
         public IDictionary<int, BookDocumentRow> Rows => _rows;
         public IDictionary<int, Column> Columns => _columns;
 
@@ -2201,12 +2251,17 @@ namespace SheetReader
     public class JsonBookFormat : BookFormat
     {
         public override BookFormatType Type => BookFormatType.Json;
+        public static IReadOnlyList<string> WellKnownRootPropertyNames { get; } = ["sheets", "rows", "columns", "name"];
+        public static IReadOnlyList<string> WellKnownRowsPropertyNames { get; } = ["cells"];
+        public static IReadOnlyList<string> WellKnownColumnPropertyNames { get; } = ["name", "index"];
+        public static IReadOnlyList<string> WellKnownCellPropertyNames { get; } = ["value", "isError"];
 
         public virtual JsonBookOptions Options { get; set; } = JsonBookOptions.ParseDates;
         public virtual string? SheetsPropertyName { get; set; }
         public virtual string? ColumnsPropertyName { get; set; }
         public virtual string? RowsPropertyName { get; set; }
         public virtual JsonWriterOptions WriterOptions { get; set; }
+        public virtual JsonElement RootElement { get; set; }
         public virtual JsonSerializerOptions SerializerOptions { get; set; } = new JsonSerializerOptions
         {
             AllowTrailingCommas = true,

@@ -4,7 +4,7 @@ using System.Text.Json;
 namespace SheetReader
 {
     // minimize memory
-    public class BookDocumentJsonCell : BookDocumentCell
+    public class BookDocumentJsonCell : BookDocumentCell, IWithJsonElement
     {
         public BookDocumentJsonCell(Book.JsonCell cell)
             : base(cell)

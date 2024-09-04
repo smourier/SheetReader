@@ -218,7 +218,7 @@ namespace SheetReader
             }
         }
 
-        public class JsonSheet : Sheet
+        public class JsonSheet : Sheet, IWithJsonElement
         {
             private readonly Dictionary<string, int> _columnsFromRows = new(StringComparer.OrdinalIgnoreCase);
 
@@ -295,30 +295,46 @@ namespace SheetReader
                 var index = 0;
                 foreach (var columnElement in columns.EnumerateArray())
                 {
-                    var column = CreateColumn();
-                    if (column != null)
+                    Column column;
+                    switch (columnElement.ValueKind)
                     {
-                        switch (columnElement.ValueKind)
-                        {
-                            case JsonValueKind.Object:
-                                column.Name = columnElement.GetNullifiedString("name") ?? columnElement.GetNullifiedString("Name");
-                                break;
+                        case JsonValueKind.Object:
+                            column = CreateColumn(columnElement);
+                            if (column == null)
+                                continue;
 
-                            case JsonValueKind.String:
-                                column.Name = columnElement.GetString();
-                                break;
+                            column.Name = columnElement.GetNullifiedString("name") ?? columnElement.GetNullifiedString("Name");
+                            break;
 
-                            case JsonValueKind.Number:
-                                column.Name = columnElement.GetInt64().ToString();
-                                break;
-                        }
+                        case JsonValueKind.String:
+                            column = CreateColumn();
+                            if (column == null)
+                                continue;
 
-                        if (column.Name != null)
-                        {
-                            column.Index = columnElement.GetNullableInt32("index") ?? columnElement.GetNullableInt32("Index").GetValueOrDefault(index);
-                            yield return column;
-                            index++;
-                        }
+                            column.Name = columnElement.GetString();
+                            break;
+
+                        case JsonValueKind.Number:
+                            column = CreateColumn();
+                            if (column == null)
+                                continue;
+
+                            column.Name = columnElement.GetInt64().ToString();
+                            break;
+
+                        default:
+                            column = CreateColumn();
+                            if (column == null)
+                                continue;
+
+                            break;
+                    }
+
+                    if (column.Name != null)
+                    {
+                        column.Index = columnElement.GetNullableInt32("index") ?? columnElement.GetNullableInt32("Index").GetValueOrDefault(index);
+                        yield return column;
+                        index++;
                     }
                 }
             }
@@ -384,15 +400,21 @@ namespace SheetReader
                 }
             }
 
+            protected virtual JsonColumn CreateColumn(JsonElement element) => new JsonColumn(element);
             protected virtual JsonRow CreateRow(JsonSheet sheet, JsonElement element, JsonBookFormat format) => new(sheet, element, format);
         }
 
-        public class JsonCell(JsonElement element) : Cell
+        public class JsonColumn(JsonElement element) : Column, IWithJsonElement
         {
             public JsonElement Element { get; } = element;
         }
 
-        public class JsonRow : Row
+        public class JsonCell(JsonElement element) : Cell, IWithJsonElement
+        {
+            public JsonElement Element { get; } = element;
+        }
+
+        public class JsonRow : Row, IWithJsonElement
         {
             public JsonRow(JsonSheet sheet, JsonElement element, JsonBookFormat format)
             {
@@ -1562,7 +1584,7 @@ namespace SheetReader
 namespace SheetReader
 {
     // minimize memory
-    public class BookDocumentJsonCell : BookDocumentCell
+    public class BookDocumentJsonCell : BookDocumentCell, IWithJsonElement
     {
         public BookDocumentJsonCell(Book.JsonCell cell)
             : base(cell)
@@ -2243,6 +2265,14 @@ namespace SheetReader
 
         // csv only
         CsvWriteColumns = 0x40,
+    }
+}
+
+namespace SheetReader
+{
+    public interface IWithJsonElement
+    {
+        JsonElement Element { get; }
     }
 }
 

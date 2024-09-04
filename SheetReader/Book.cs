@@ -365,7 +365,7 @@ namespace SheetReader
                 }
             }
 
-            protected virtual JsonColumn CreateColumn(JsonElement element) => new JsonColumn(element);
+            protected virtual JsonColumn CreateColumn(JsonElement element) => new(element);
             protected virtual JsonRow CreateRow(JsonSheet sheet, JsonElement element, JsonBookFormat format) => new(sheet, element, format);
         }
 

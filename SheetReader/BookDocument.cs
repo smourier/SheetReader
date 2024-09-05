@@ -143,7 +143,7 @@ namespace SheetReader
             }
         }
 
-        protected virtual void ExportAsJson(Stream stream, ExportOptions options, JsonBookFormat format)
+        public virtual void ExportAsJson(Stream stream, ExportOptions options, JsonBookFormat format)
         {
             ArgumentNullException.ThrowIfNull(stream);
             ArgumentNullException.ThrowIfNull(format);
@@ -155,6 +155,20 @@ namespace SheetReader
             }
 
             using var writer = new Utf8JsonWriter(stream, fo);
+            WriteTo(writer, options, format);
+        }
+
+        public virtual void WriteTo(Utf8JsonWriter writer, ExportOptions options, JsonBookFormat format)
+        {
+            ArgumentNullException.ThrowIfNull(writer);
+            ArgumentNullException.ThrowIfNull(format);
+
+            var fo = format.WriterOptions;
+            if (options.HasFlag(ExportOptions.JsonIndented))
+            {
+                fo.Indented = true;
+            }
+
             if (Sheets.Count > 0)
             {
                 if (Sheets.Count == 1)

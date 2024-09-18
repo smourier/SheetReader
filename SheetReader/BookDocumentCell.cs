@@ -3,7 +3,7 @@
 namespace SheetReader
 {
     // minimize memory
-    public class BookDocumentCell
+    public class BookDocumentCell : IWithValue
     {
         public BookDocumentCell(Cell cell)
         {

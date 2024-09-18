@@ -303,7 +303,10 @@ namespace SheetReader
                             if (column == null)
                                 continue;
 
-                            column.Name = columnElement.GetNullifiedString("name") ?? columnElement.GetNullifiedString("Name");
+                            column.Name = columnElement.GetNullifiedString("name")
+                                ?? columnElement.GetNullifiedString("value")
+                                ?? columnElement.GetNullifiedString("Name")
+                                ?? columnElement.GetNullifiedString("Value");
                             break;
 
                         case JsonValueKind.String:
@@ -1572,7 +1575,7 @@ namespace SheetReader
 namespace SheetReader
 {
     // minimize memory
-    public class BookDocumentCell
+    public class BookDocumentCell : IWithValue
     {
         public BookDocumentCell(Cell cell)
         {
@@ -1614,7 +1617,8 @@ namespace SheetReader
 
 namespace SheetReader
 {
-    public class BookDocumentJsonCellError(Book.JsonCell cell) : BookDocumentCellError(cell)
+    public class BookDocumentJsonCellError(Book.JsonCell cell)
+        : BookDocumentCellError(cell)
     {
     }
 }
@@ -1634,6 +1638,7 @@ namespace SheetReader
             if (_cells == null)
                 throw new InvalidOperationException();
 
+            Row = row;
             RowIndex = row.Index;
             IsHidden = !row.IsVisible;
             foreach (var cell in row.EnumerateCells())
@@ -1661,6 +1666,7 @@ namespace SheetReader
             }
         }
 
+        public Row Row { get; }
         public int RowIndex { get; }
         public virtual bool IsHidden { get; }
         public int? FirstCellIndex { get; }
@@ -1954,7 +1960,7 @@ namespace SheetReader
 
 namespace SheetReader
 {
-    public class Cell
+    public class Cell : IWithValue
     {
         public virtual int ColumnIndex { get; set; }
         public virtual object? Value { get; set; }
@@ -1967,10 +1973,11 @@ namespace SheetReader
 
 namespace SheetReader
 {
-    public class Column
+    public class Column : IWithValue
     {
         public virtual int Index { get; set; }
         public virtual string? Name { get; set; }
+        object? IWithValue.Value => Name;
 
         public override string ToString() => Extensions.Nullify(Name) ?? Index.ToString();
     }
@@ -2292,12 +2299,20 @@ namespace SheetReader
 
 namespace SheetReader
 {
+    public interface IWithValue
+    {
+        object? Value { get; }
+    }
+}
+
+namespace SheetReader
+{
     public class JsonBookFormat : BookFormat
     {
         public override BookFormatType Type => BookFormatType.Json;
         public static IReadOnlyList<string> WellKnownRootPropertyNames { get; } = ["sheets", "rows", "columns", "name"];
         public static IReadOnlyList<string> WellKnownRowsPropertyNames { get; } = ["cells"];
-        public static IReadOnlyList<string> WellKnownColumnPropertyNames { get; } = ["name", "index"];
+        public static IReadOnlyList<string> WellKnownColumnPropertyNames { get; } = ["name", "value", "index"];
         public static IReadOnlyList<string> WellKnownCellPropertyNames { get; } = ["value", "isError"];
 
         public virtual JsonBookOptions Options { get; set; } = JsonBookOptions.ParseDates;

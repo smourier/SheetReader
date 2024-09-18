@@ -16,6 +16,7 @@ namespace SheetReader
             if (_cells == null)
                 throw new InvalidOperationException();
 
+            Row = row;
             RowIndex = row.Index;
             IsHidden = !row.IsVisible;
             foreach (var cell in row.EnumerateCells())
@@ -43,6 +44,7 @@ namespace SheetReader
             }
         }
 
+        public Row Row { get; }
         public int RowIndex { get; }
         public virtual bool IsHidden { get; }
         public int? FirstCellIndex { get; }

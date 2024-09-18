@@ -1,6 +1,6 @@
 ﻿namespace SheetReader
 {
-    public class Cell
+    public class Cell : IWithValue
     {
         public virtual int ColumnIndex { get; set; }
         public virtual object? Value { get; set; }

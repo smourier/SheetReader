@@ -8,7 +8,7 @@ namespace SheetReader
         public override BookFormatType Type => BookFormatType.Json;
         public static IReadOnlyList<string> WellKnownRootPropertyNames { get; } = ["sheets", "rows", "columns", "name"];
         public static IReadOnlyList<string> WellKnownRowsPropertyNames { get; } = ["cells"];
-        public static IReadOnlyList<string> WellKnownColumnPropertyNames { get; } = ["name", "index"];
+        public static IReadOnlyList<string> WellKnownColumnPropertyNames { get; } = ["name", "value", "index"];
         public static IReadOnlyList<string> WellKnownCellPropertyNames { get; } = ["value", "isError"];
 
         public virtual JsonBookOptions Options { get; set; } = JsonBookOptions.ParseDates;

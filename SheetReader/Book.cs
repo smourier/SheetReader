@@ -268,7 +268,10 @@ namespace SheetReader
                             if (column == null)
                                 continue;
 
-                            column.Name = columnElement.GetNullifiedString("name") ?? columnElement.GetNullifiedString("Name");
+                            column.Name = columnElement.GetNullifiedString("name")
+                                ?? columnElement.GetNullifiedString("value")
+                                ?? columnElement.GetNullifiedString("Name")
+                                ?? columnElement.GetNullifiedString("Value");
                             break;
 
                         case JsonValueKind.String:

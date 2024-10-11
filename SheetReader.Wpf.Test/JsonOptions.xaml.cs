@@ -9,6 +9,7 @@ namespace SheetReader.Wpf.Test
     {
         public event PropertyChangedEventHandler? PropertyChanged;
 
+        private bool _cellByCell;
         private bool _asObjects;
         private bool _indented;
         private bool _firstRowDefinesColumns;
@@ -52,6 +53,19 @@ namespace SheetReader.Wpf.Test
             }
         }
 
+        public bool CellByCell
+        {
+            get => _cellByCell;
+            set
+            {
+                if (_cellByCell == value)
+                    return;
+
+                _cellByCell = value;
+                OnPropertyChanged();
+            }
+        }
+
         public bool AsObjects
         {
             get => _asObjects;
@@ -78,7 +92,21 @@ namespace SheetReader.Wpf.Test
             }
         }
 
-        private void OnPropertyChanged([CallerMemberName] string? name = null) => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
+        private void OnPropertyChanged([CallerMemberName] string? name = null)
+        {
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
+            cbAsObjects.IsEnabled = !CellByCell;
+            cbFirstRowDefinesColumns.IsEnabled = !CellByCell;
+            if (!cbAsObjects.IsEnabled)
+            {
+                AsObjects = false;
+            }
+
+            if (!cbFirstRowDefinesColumns.IsEnabled)
+            {
+                FirstRowDefinesColumns = false;
+            }
+        }
 
         protected override void OnKeyDown(KeyEventArgs e)
         {

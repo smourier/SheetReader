@@ -222,18 +222,140 @@ namespace SheetReader
                 return false;
             }
 
+            void writePositionedCell(BookDocumentCell? cell, int rowIndex, int columnIndex)
+            {
+                // don't output null values
+                if (cell == null || cell.Value == null || Convert.IsDBNull(cell.Value))
+                    return;
+
+                writer.WriteStartObject();
+                writer.WriteNumber("r", rowIndex);
+                writer.WriteNumber("c", columnIndex);
+                writer.WritePropertyName("value");
+
+                if (cell.IsError)
+                {
+                    if (cell.Value != null)
+                    {
+                        writeCell(new BookDocumentCell(new Cell { Value = cell.Value }));
+                    }
+
+                    writer.WriteBoolean("isError", true);
+                    writer.WriteEndObject();
+                    return;
+                }
+
+                if (cell.Value is string s)
+                {
+                    writer.WriteStringValue(s);
+                    writer.WriteEndObject();
+                    return;
+                }
+
+                if (cell.Value is bool b)
+                {
+                    writer.WriteBooleanValue(b);
+                    writer.WriteEndObject();
+                    return;
+                }
+
+                if (cell.Value is int i32)
+                {
+                    writer.WriteNumberValue(i32);
+                    writer.WriteEndObject();
+                    return;
+                }
+
+                if (cell.Value is long l)
+                {
+                    writer.WriteNumberValue(l);
+                    writer.WriteEndObject();
+                    return;
+                }
+
+                if (cell.Value is uint ui)
+                {
+                    writer.WriteNumberValue(ui);
+                    writer.WriteEndObject();
+                    return;
+                }
+
+                if (cell.Value is ulong ul)
+                {
+                    writer.WriteNumberValue(ul);
+                    writer.WriteEndObject();
+                    return;
+                }
+
+                if (cell.Value is float flt)
+                {
+                    writer.WriteNumberValue(flt);
+                    writer.WriteEndObject();
+                    return;
+                }
+
+                if (cell.Value is double dbl)
+                {
+                    writer.WriteNumberValue(dbl);
+                    writer.WriteEndObject();
+                    return;
+                }
+
+                if (cell.Value is decimal dec)
+                {
+                    writer.WriteNumberValue(dec);
+                    writer.WriteEndObject();
+                    return;
+                }
+
+                if (cell.Value is byte[] bytes)
+                {
+                    writer.WriteBase64StringValue(bytes);
+                    writer.WriteEndObject();
+                    return;
+                }
+
+                if (cell.Value is IDictionary dictionary)
+                {
+                    foreach (DictionaryEntry kv in dictionary)
+                    {
+                        writer.WritePropertyName(kv.Key.ToString()!);
+                        writeCell(new BookDocumentCell(new Cell() { Value = kv.Value }));
+                    }
+                    writer.WriteEndObject();
+                    return;
+                }
+
+                if (cell.Value is Array array && array.Rank == 1)
+                {
+                    writer.WriteStartArray();
+                    for (var i = 0; i < array.Length; i++)
+                    {
+                        var item = array.GetValue(i);
+                        writeCell(new BookDocumentCell(new Cell() { Value = item }));
+                    }
+                    writer.WriteEndArray();
+                    writer.WriteEndObject();
+                    return;
+                }
+
+                s = string.Format(CultureInfo.InvariantCulture, "{0}", cell.Value);
+                writer.WriteStringValue(s);
+                writer.WriteEndObject();
+            }
+
             void writeCell(BookDocumentCell? cell)
             {
                 if (cell != null && cell.IsError)
                 {
                     writer.WriteStartObject();
-                    writer.WritePropertyName("isError");
-                    writer.WriteBooleanValue(value: true);
+                    writer.WriteBoolean("isError", true);
                     if (cell.Value != null)
                     {
                         writer.WritePropertyName("value");
                         writeCell(new BookDocumentCell(new Cell { Value = cell.Value }));
                     }
+
                     writer.WriteEndObject();
                     return;
                 }
@@ -368,102 +490,152 @@ namespace SheetReader
                 writer.WriteEndObject();
             }
 
+            void writeColumns(BookDocumentSheet sheet)
+            {
+                if (!sheet.FirstColumnIndex.HasValue || !sheet.LastColumnIndex.HasValue)
+                    return;
+
+                writer.WritePropertyName(format.ColumnsPropertyName ?? "columns");
+                writer.WriteStartArray();
+                var firstColumnIndex = options.HasFlag(ExportOptions.StartFromFirstColumn) ? sheet.FirstColumnIndex.Value : 0;
+                for (var columnIndex = firstColumnIndex; columnIndex <= sheet.LastColumnIndex.Value; columnIndex++)
+                {
+                    sheet.Columns.TryGetValue(columnIndex, out var col);
+                    writer.WriteStringValue(col?.Name);
+                }
+                writer.WriteEndArray();
+            }
+
+            void writeSheetHeader(BookDocumentSheet sheet)
+            {
+                if (!string.IsNullOrEmpty(sheet.Name))
+                {
+                    writer.WritePropertyName("name");
+                    writer.WriteStringValue(sheet.Name);
+                }
+
+                if (sheet.IsHidden)
+                {
+                    writer.WritePropertyName("isHidden");
+                    writer.WriteBooleanValue(value: true);
+                }
+            }
+
             void writeSheet(BookDocumentSheet sheet)
             {
-                if (sheet.FirstColumnIndex.HasValue && sheet.LastColumnIndex.HasValue)
+                if (!sheet.FirstColumnIndex.HasValue || !sheet.LastColumnIndex.HasValue)
+                    return;
+
+                if (options.HasFlag(ExportOptions.JsonCellByCell))
                 {
-                    if (sheet.ColumnsHaveBeenGenerated && !options.HasFlag(ExportOptions.JsonRowsAsObject))
+                    writer.WriteStartObject();
+                    writeSheetHeader(sheet);
+
+                    if (!sheet.ColumnsHaveBeenGenerated)
                     {
-                        writer.WriteStartArray();
-                        if (sheet.FirstRowIndex.HasValue && sheet.LastRowIndex.HasValue)
+                        writeColumns(sheet);
+                    }
+
+                    writer.WritePropertyName(format.RowsPropertyName ?? "cells");
+                    writer.WriteStartArray();
+
+                    if (sheet.FirstRowIndex.HasValue && sheet.LastRowIndex.HasValue)
+                    {
+                        var rowOffset = sheet.ColumnsHaveBeenGenerated ? 0 : -1;
+                        for (var rowIndex = sheet.FirstRowIndex.Value; rowIndex <= sheet.LastRowIndex.Value; rowIndex++)
                         {
-                            var firstRowIndex = options.HasFlag(ExportOptions.StartFromFirstRow) ? sheet.FirstRowIndex.Value : 0;
-                            for (var rowIndex = firstRowIndex; rowIndex <= sheet.LastRowIndex.Value; rowIndex++)
+                            sheet.Rows.TryGetValue(rowIndex, out var row);
+                            if (row != null)
                             {
-                                if (!options.HasFlag(ExportOptions.FirstRowDefinesColumns) || rowIndex != firstRowIndex)
+                                for (var columnIndex = sheet.FirstColumnIndex.Value; columnIndex <= sheet.LastColumnIndex.Value; columnIndex++)
                                 {
-                                    sheet.Rows.TryGetValue(rowIndex, out var row2);
-                                    writeRow(sheet, row2);
+                                    if (row.Cells.TryGetValue(columnIndex, out var cell))
+                                    {
+                                        writePositionedCell(cell, rowIndex + rowOffset, columnIndex);
+                                    }
                                 }
                             }
                         }
-                        writer.WriteEndArray();
+                    }
+
+                    writer.WriteEndArray();
+                    writer.WriteEndObject();
+                    return;
+                }
+
+                if (sheet.ColumnsHaveBeenGenerated && !options.HasFlag(ExportOptions.JsonRowsAsObject))
+                {
+                    writer.WriteStartArray();
+                    if (sheet.FirstRowIndex.HasValue && sheet.LastRowIndex.HasValue)
+                    {
+                        var firstRowIndex = options.HasFlag(ExportOptions.StartFromFirstRow) ? sheet.FirstRowIndex.Value : 0;
+                        for (var rowIndex = firstRowIndex; rowIndex <= sheet.LastRowIndex.Value; rowIndex++)
+                        {
+                            if (!options.HasFlag(ExportOptions.FirstRowDefinesColumns) || rowIndex != firstRowIndex)
+                            {
+                                sheet.Rows.TryGetValue(rowIndex, out var row2);
+                                writeRow(sheet, row2);
+                            }
+                        }
+                    }
+                    writer.WriteEndArray();
+                }
+                else
+                {
+                    writer.WriteStartObject();
+                    writeSheetHeader(sheet);
+
+                    Dictionary<int, string>? colNames = null;
+                    if (!options.HasFlag(ExportOptions.JsonRowsAsObject))
+                    {
+                        writeColumns(sheet);
                     }
                     else
                     {
-                        writer.WriteStartObject();
-                        if (!string.IsNullOrEmpty(sheet.Name))
+                        colNames = [];
+                        for (var columnIndex = sheet.FirstColumnIndex.Value; columnIndex <= sheet.LastColumnIndex.Value; columnIndex++)
                         {
-                            writer.WritePropertyName("name");
-                            writer.WriteStringValue(sheet.Name);
-                        }
+                            string? name = null;
+                            if (options.HasFlag(ExportOptions.FirstRowDefinesColumns) &&
+                                sheet.FirstRowIndex.HasValue && sheet.Rows.TryGetValue(sheet.FirstRowIndex.Value, out var row) &&
+                                row != null && row.Cells.TryGetValue(columnIndex, out var cell) &&
+                                cell != null && cell.Value != null)
+                            {
+                                name = Extensions.Nullify(string.Format(CultureInfo.InvariantCulture, "{0}", cell.Value));
+                            }
 
-                        if (sheet.IsHidden)
-                        {
-                            writer.WritePropertyName("isHidden");
-                            writer.WriteBooleanValue(value: true);
-                        }
-
-                        Dictionary<int, string>? colNames = null;
-                        if (!options.HasFlag(ExportOptions.JsonRowsAsObject))
-                        {
-                            writer.WritePropertyName(format.ColumnsPropertyName ?? "columns");
-                            writer.WriteStartArray();
-                            var firstColumnIndex = options.HasFlag(ExportOptions.StartFromFirstColumn) ? sheet.FirstColumnIndex.Value : 0;
-                            for (var columnIndex = firstColumnIndex; columnIndex <= sheet.LastColumnIndex.Value; columnIndex++)
+                            if (name == null)
                             {
                                 sheet.Columns.TryGetValue(columnIndex, out var col);
-                                writer.WriteStringValue(col?.Name);
+                                name = col?.Name ?? columnIndex.ToString();
                             }
-                            writer.WriteEndArray();
+                            colNames[columnIndex] = name;
                         }
-                        else
-                        {
-                            colNames = [];
-                            for (var columnIndex = sheet.FirstColumnIndex.Value; columnIndex <= sheet.LastColumnIndex.Value; columnIndex++)
-                            {
-                                string? name = null;
-                                if (options.HasFlag(ExportOptions.FirstRowDefinesColumns) &&
-                                    sheet.FirstRowIndex.HasValue && sheet.Rows.TryGetValue(sheet.FirstRowIndex.Value, out var row) &&
-                                    row != null && row.Cells.TryGetValue(columnIndex, out var cell) &&
-                                    cell != null && cell.Value != null)
-                                {
-                                    name = Extensions.Nullify(string.Format(CultureInfo.InvariantCulture, "{0}", cell.Value));
-                                }
-
-                                if (name == null)
-                                {
-                                    sheet.Columns.TryGetValue(columnIndex, out var col);
-                                    name = col?.Name ?? columnIndex.ToString();
-                                }
-                                colNames[columnIndex] = name;
-                            }
-                        }
-
-                        writer.WritePropertyName(format.RowsPropertyName ?? "rows");
-                        writer.WriteStartArray();
-                        if (sheet.FirstRowIndex.HasValue && sheet.LastRowIndex.HasValue)
-                        {
-                            var firstRowIndex = options.HasFlag(ExportOptions.StartFromFirstRow) ? sheet.FirstRowIndex.Value : 0;
-                            for (var rowIndex = firstRowIndex; rowIndex <= sheet.LastRowIndex.Value; rowIndex++)
-                            {
-                                if (!options.HasFlag(ExportOptions.FirstRowDefinesColumns) || rowIndex != firstRowIndex)
-                                {
-                                    sheet.Rows.TryGetValue(rowIndex, out var row);
-                                    if (options.HasFlag(ExportOptions.JsonRowsAsObject))
-                                    {
-                                        writeRowAsObjects(sheet, row, colNames!);
-                                    }
-                                    else
-                                    {
-                                        writeRow(sheet, row);
-                                    }
-                                }
-                            }
-                        }
-                        writer.WriteEndArray();
-                        writer.WriteEndObject();
                     }
+
+                    writer.WritePropertyName(format.RowsPropertyName ?? "rows");
+                    writer.WriteStartArray();
+                    if (sheet.FirstRowIndex.HasValue && sheet.LastRowIndex.HasValue)
+                    {
+                        var firstRowIndex = options.HasFlag(ExportOptions.StartFromFirstRow) ? sheet.FirstRowIndex.Value : 0;
+                        for (var rowIndex = firstRowIndex; rowIndex <= sheet.LastRowIndex.Value; rowIndex++)
+                        {
+                            if (!options.HasFlag(ExportOptions.FirstRowDefinesColumns) || rowIndex != firstRowIndex)
+                            {
+                                sheet.Rows.TryGetValue(rowIndex, out var row);
+                                if (options.HasFlag(ExportOptions.JsonRowsAsObject))
+                                {
+                                    writeRowAsObjects(sheet, row, colNames!);
+                                }
+                                else
+                                {
+                                    writeRow(sheet, row);
+                                }
+                            }
+                        }
+                    }
+                    writer.WriteEndArray();
+                    writer.WriteEndObject();
                 }
             }
         }

@@ -76,7 +76,7 @@ namespace SheetReader
             throw new NotSupportedException();
         }
 
-        protected virtual JsonSheet CreateJsonSheet(JsonElement element, JsonBookFormat format) => new(element, format);
+        public virtual JsonSheet CreateJsonSheet(JsonElement element, JsonBookFormat format) => new(element, format);
         protected virtual IEnumerable<Sheet> EnumerateJsonSheets(Stream stream, JsonBookFormat format)
         {
             ArgumentNullException.ThrowIfNull(stream);
@@ -159,12 +159,19 @@ namespace SheetReader
 
                 if (properties.Count == 2)
                 {
+                    var cellsName = Extensions.Nullify(format.CellsPropertyName) ?? "cells";
                     var rowsName = Extensions.Nullify(format.RowsPropertyName) ?? "rows";
                     var columnsName = Extensions.Nullify(format.ColumnsPropertyName) ?? "columns";
                     if (Extensions.EqualsIgnoreCase(properties[0].Name, columnsName) && Extensions.EqualsIgnoreCase(properties[1].Name, rowsName))
                         return false;
 
                     if (Extensions.EqualsIgnoreCase(properties[0].Name, rowsName) && Extensions.EqualsIgnoreCase(properties[1].Name, columnsName))
+                        return false;
+
+                    if (Extensions.EqualsIgnoreCase(properties[0].Name, columnsName) && Extensions.EqualsIgnoreCase(properties[1].Name, cellsName))
+                        return false;
+
+                    if (Extensions.EqualsIgnoreCase(properties[0].Name, cellsName) && Extensions.EqualsIgnoreCase(properties[1].Name, columnsName))
                         return false;
                 }
                 return true;
@@ -197,6 +204,15 @@ namespace SheetReader
             public JsonElement Element { get; }
             public JsonBookFormat Format { get; }
             public IReadOnlyDictionary<string, int> ColumnsFromRows => _columnsFromRows;
+            public int LastDefinedColumnIndex { get; protected set; } = -1;
+
+            public virtual void EnsureColumn(int columnIndex)
+            {
+                if (columnIndex > LastDefinedColumnIndex)
+                {
+                    LastDefinedColumnIndex = columnIndex;
+                }
+            }
 
             public virtual int AddOrGetColumnFromRows(string name)
             {
@@ -209,6 +225,37 @@ namespace SheetReader
                 return index;
             }
 
+            public virtual Cell ReadCell(JsonElement cellElement)
+            {
+                Cell cell;
+                if (cellElement.ValueKind == JsonValueKind.Object)
+                {
+                    cell = CreateJsonCell(cellElement);
+                    if (cellElement.TryGetProperty("value", out var property) || cellElement.TryGetProperty("Value", out property))
+                    {
+                        cell.Value = Extensions.ToObject(property, Format.Options);
+                        cell.RawValue = property.GetRawText();
+                    }
+                    else
+                    {
+                        cell.Value = Extensions.ToObject(cellElement, Format.Options);
+                        cell.RawValue = cellElement.GetRawText();
+                    }
+
+                    if ((cellElement.TryGetProperty("isError", out property) || cellElement.TryGetProperty("IsError", out property)) && Extensions.ToObject(property, Format.Options) is bool error)
+                    {
+                        cell.IsError = error;
+                    }
+                }
+                else
+                {
+                    cell = CreateCell();
+                    cell.Value = Extensions.ToObject(cellElement, Format.Options);
+                    cell.RawValue = cellElement.GetRawText();
+                }
+                return cell;
+            }
+
             public override IEnumerable<Column> EnumerateColumns()
             {
                 var count = 0;
@@ -218,14 +265,16 @@ namespace SheetReader
                     count++;
                 }
 
-                if (count != 0 || _columnsFromRows.Count <= 0)
-                {
-                    yield break;
-                }
-
                 foreach (var kv in _columnsFromRows)
                 {
                     yield return new Column { Index = kv.Value, Name = kv.Key };
+                    count++;
+                }
+
+                while (count <= LastDefinedColumnIndex)
+                {
+                    yield return new Column { Index = count, Name = count.ToString() };
+                    count++;
                 }
             }
 
@@ -264,7 +313,7 @@ namespace SheetReader
                     switch (columnElement.ValueKind)
                     {
                         case JsonValueKind.Object:
-                            column = CreateColumn(columnElement);
+                            column = CreateJsonColumn(columnElement);
                             if (column == null)
                                 continue;
 
@@ -307,8 +356,60 @@ namespace SheetReader
                 }
             }
 
+            public virtual IEnumerable<Row> EnumerateRowsFromCells(JsonElement cells)
+            {
+                if (cells.ValueKind != JsonValueKind.Array)
+                    return [];
+
+                var rows = new Dictionary<int, JsonCellsRow>();
+                foreach (var cellElement in cells.EnumerateArray())
+                {
+                    var rowIndex = cellElement.GetNullableInt32("r") ?? 0;
+                    if (!rows.TryGetValue(rowIndex, out var row))
+                    {
+                        row = CreateJsonCellsRow(this, Format);
+                        row.Index = rowIndex;
+                        rows.Add(rowIndex, row);
+                    }
+
+                    var colIndex = cellElement.GetNullableInt32("c") ?? 0;
+                    var cell = ReadCell(cellElement);
+                    row.SetCell(colIndex, cell);
+                }
+                return rows.OrderBy(r => r.Key).Select(r => r.Value);
+            }
+
             public override IEnumerable<Row> EnumerateRows()
             {
+                JsonElement? cells = null;
+                if (Format.CellsPropertyName == null)
+                {
+                    if (Element.TryGetProperty("cells", out var element) && element.ValueKind == JsonValueKind.Array)
+                    {
+                        cells = element;
+                    }
+                    else if (Element.TryGetProperty("Cells", out element) && element.ValueKind == JsonValueKind.Array)
+                    {
+                        cells = element;
+                    }
+                }
+                else
+                {
+                    if (Element.TryGetProperty(Format.CellsPropertyName, out var element) && element.ValueKind == JsonValueKind.Array)
+                    {
+                        cells = element;
+                    }
+                }
+
+                if (cells.HasValue)
+                {
+                    foreach (var cell in EnumerateRowsFromCells(cells.Value))
+                    {
+                        yield return cell;
+                    }
+                    yield break;
+                }
+
                 JsonElement rows;
                 if (Format.RowsPropertyName == null)
                 {
@@ -358,7 +459,7 @@ namespace SheetReader
                 var index = 0;
                 foreach (var rowElement in rows.EnumerateArray())
                 {
-                    var row = CreateRow(this, rowElement, Format);
+                    var row = CreateJsonRow(this, rowElement, Format);
                     if (row != null)
                     {
                         row.Index = index;
@@ -368,8 +469,61 @@ namespace SheetReader
                 }
             }
 
-            protected virtual JsonColumn CreateColumn(JsonElement element) => new(element);
-            protected virtual JsonRow CreateRow(JsonSheet sheet, JsonElement element, JsonBookFormat format) => new(sheet, element, format);
+            public virtual JsonColumn CreateJsonColumn(JsonElement element) => new(element);
+            public virtual JsonRow CreateJsonRow(JsonSheet sheet, JsonElement element, JsonBookFormat format) => new(sheet, element, format);
+            public virtual JsonCellsRow CreateJsonCellsRow(JsonSheet sheet, JsonBookFormat format) => new(sheet, format);
+            public virtual JsonCell CreateJsonCell(JsonElement element) => new(element);
+            public virtual Cell CreateCell() => new();
+        }
+
+        public class JsonCellsRow : Row
+        {
+            private readonly Dictionary<int, Cell> _cells = [];
+            private int _max = -1;
+
+            public JsonCellsRow(JsonSheet sheet, JsonBookFormat format)
+            {
+                ArgumentNullException.ThrowIfNull(sheet);
+                ArgumentNullException.ThrowIfNull(format);
+                Sheet = sheet;
+                Format = format;
+            }
+
+            public JsonSheet Sheet { get; }
+            public JsonBookFormat Format { get; }
+            public IReadOnlyDictionary<int, Cell> Cells => _cells;
+
+            public virtual void SetCell(int columnIndex, Cell cell)
+            {
+                _cells[columnIndex] = cell;
+                if (columnIndex > _max)
+                {
+                    _max = columnIndex;
+                }
+
+                Sheet.EnsureColumn(columnIndex);
+            }
+
+            public override IEnumerable<Cell> EnumerateCells()
+            {
+                if (_max < 0)
+                    yield break;
+
+                for (var i = 0; i <= _max; i++)
+                {
+                    if (Cells.TryGetValue(i, out var cell))
+                    {
+                        cell.ColumnIndex = i;
+                        yield return cell;
+                    }
+                    else
+                    {
+                        var nullCell = Sheet.CreateCell();
+                        nullCell.ColumnIndex = i;
+                        yield return nullCell;
+                    }
+                }
+            }
         }
 
         public class JsonColumn(JsonElement element) : Column, IWithJsonElement
@@ -404,7 +558,7 @@ namespace SheetReader
                     var index = 0;
                     foreach (var cellElement2 in Element.EnumerateArray())
                     {
-                        var cell = readCell(cellElement2);
+                        var cell = Sheet.ReadCell(cellElement2);
                         cell.ColumnIndex = index;
                         yield return cell;
                         index++;
@@ -420,7 +574,7 @@ namespace SheetReader
                         var index = 0;
                         foreach (var cellElement in cellsElement.EnumerateArray())
                         {
-                            var cell = readCell(cellElement);
+                            var cell = Sheet.ReadCell(cellElement);
                             cell.ColumnIndex = index;
                             yield return cell;
                             index++;
@@ -432,46 +586,12 @@ namespace SheetReader
                     {
                         var index = Sheet.AddOrGetColumnFromRows(property.Name);
                         var cellElement = Element.GetProperty(property.Name);
-                        var cell = readCell(cellElement);
+                        var cell = Sheet.ReadCell(cellElement);
                         cell.ColumnIndex = index;
                         yield return cell;
                     }
                 }
-
-                Cell readCell(JsonElement cellElement)
-                {
-                    Cell cell;
-                    if (cellElement.ValueKind == JsonValueKind.Object)
-                    {
-                        cell = CreateJsonCell(cellElement);
-                        if (cellElement.TryGetProperty("value", out var property) || cellElement.TryGetProperty("Value", out property))
-                        {
-                            cell.Value = Extensions.ToObject(property, Format.Options);
-                            cell.RawValue = property.GetRawText();
-                        }
-                        else
-                        {
-                            cell.Value = Extensions.ToObject(cellElement, Format.Options);
-                            cell.RawValue = cellElement.GetRawText();
-                        }
-
-                        if ((cellElement.TryGetProperty("isError", out property) || cellElement.TryGetProperty("IsError", out property)) && Extensions.ToObject(property, Format.Options) is bool error)
-                        {
-                            cell.IsError = error;
-                        }
-                    }
-                    else
-                    {
-                        cell = CreateCell();
-                        cell.Value = Extensions.ToObject(cellElement, Format.Options);
-                        cell.RawValue = cellElement.GetRawText();
-                    }
-                    return cell;
-                }
             }
-
-            protected virtual Cell CreateCell() => new();
-            protected virtual JsonCell CreateJsonCell(JsonElement element) => new(element);
         }
 
         protected virtual IEnumerable<Sheet> EnumerateCsvSheets(Stream stream, CsvBookFormat format)

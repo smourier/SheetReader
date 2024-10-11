@@ -695,38 +695,38 @@ namespace SheetReader.Wpf
                     currentRowY = context.RowHeight.Value + context.LineSize.Value / 2 + context.RowFullHeight.Value * firstDrawnRowIndex;
                     for (var i = firstDrawnRowIndex; i <= lastDrawnRowIndex; i++)
                     {
-                        if (!_control.Sheet.Rows.TryGetValue(i, out var row))
-                            continue;
-
-                        context.RowCol.RowIndex = i;
-                        var ccx = startCurrentColX;
-                        for (var j = firstDrawnColumnIndex.Value; j <= lastDrawnColumnIndex; j++)
+                        if (_control.Sheet.Rows.TryGetValue(i, out var row))
                         {
-                            var colWidth = _control._columnSettings[j].Width;
-                            var cellWidth = colWidth - (cellPadding.Right + cellPadding.Left);
-                            if (cellWidth <= 0)
-                                continue;
-
-                            if (row.Cells.TryGetValue(j, out var cell))
+                            context.RowCol.RowIndex = i;
+                            var ccx = startCurrentColX;
+                            for (var j = firstDrawnColumnIndex.Value; j <= lastDrawnColumnIndex; j++)
                             {
-                                context.RowCol.RowIndex = j;
-                                context.ColumnWidth = colWidth;
-                                context.CellWidth = cellWidth;
-                                var style = _control.GetCellStyle(context, cell);
+                                var colWidth = _control._columnSettings[j].Width;
+                                var cellWidth = colWidth - (cellPadding.Right + cellPadding.Left);
+                                if (cellWidth <= 0)
+                                    continue;
 
-                                if (style.Background != null)
+                                if (row.Cells.TryGetValue(j, out var cell))
                                 {
-                                    drawingContext.DrawRectangle(style.Background, null, new Rect(ccx, currentRowY, colWidth, cellHeight));
-                                }
+                                    context.RowCol.RowIndex = j;
+                                    context.ColumnWidth = colWidth;
+                                    context.CellWidth = cellWidth;
+                                    var style = _control.GetCellStyle(context, cell);
 
-                                var formattedCell = style.CreateCellFormattedText(_control.Sheet, context, cell);
-                                if (formattedCell != null)
-                                {
-                                    var textOffsetY = (context.RowHeight.Value - formattedCell.Height) / 2; // center vertically
-                                    drawingContext.DrawText(formattedCell, new Point(ccx + cellPadding.Left + context.LineSize.Value / 2, currentRowY + context.LineSize.Value / 2 + textOffsetY));
+                                    if (style.Background != null)
+                                    {
+                                        drawingContext.DrawRectangle(style.Background, null, new Rect(ccx, currentRowY, colWidth, cellHeight));
+                                    }
+
+                                    var formattedCell = style.CreateCellFormattedText(_control.Sheet, context, cell);
+                                    if (formattedCell != null)
+                                    {
+                                        var textOffsetY = (context.RowHeight.Value - formattedCell.Height) / 2; // center vertically
+                                        drawingContext.DrawText(formattedCell, new Point(ccx + cellPadding.Left + context.LineSize.Value / 2, currentRowY + context.LineSize.Value / 2 + textOffsetY));
+                                    }
                                 }
+                                ccx += colWidth + context.LineSize.Value;
                             }
-                            ccx += colWidth + context.LineSize.Value;
                         }
                         currentRowY += context.RowFullHeight.Value;
                     }

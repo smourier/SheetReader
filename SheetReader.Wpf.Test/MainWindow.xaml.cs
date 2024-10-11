@@ -159,6 +159,11 @@ namespace SheetReader.Wpf.Test
                 {
                     options |= ExportOptions.JsonIndented;
                 }
+
+                if (dlg.CellByCell)
+                {
+                    options |= ExportOptions.JsonCellByCell;
+                }
             }
             else
             {

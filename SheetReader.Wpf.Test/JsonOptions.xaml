@@ -6,51 +6,69 @@
     ResizeMode="NoResize"
     SizeToContent="WidthAndHeight"
     WindowStartupLocation="CenterOwner">
-    <Grid MinWidth="320" MinHeight="170">
+    <Grid MinWidth="320" MinHeight="200">
         <Label
             Margin="10,10,0,0"
             HorizontalAlignment="Left"
             VerticalAlignment="Top"
-            Content="Rows As Objects:" />
+            Content="Cell By Cell:"
+            ToolTip="A file in this format defines columns and cells. Each cell contains its position." />
         <CheckBox
             Margin="165,16,10,0"
             HorizontalAlignment="Left"
             VerticalAlignment="Top"
             VerticalContentAlignment="Center"
-            IsChecked="{Binding AsObjects}" />
+            IsChecked="{Binding CellByCell}" />
         <Label
             Margin="10,40,0,0"
             HorizontalAlignment="Left"
             VerticalAlignment="Top"
-            Content="First Row Defines Columns:" />
+            Content="Rows As Objects:"
+            ToolTip="A file in this format defines columns and rows. Rows are json objects, otherwise they are just json strings." />
         <CheckBox
-            Margin="165,46,90,0"
+            x:Name="cbAsObjects"
+            Margin="165,46,10,0"
             HorizontalAlignment="Left"
             VerticalAlignment="Top"
             VerticalContentAlignment="Center"
-            IsChecked="{Binding FirstRowDefinesColumns}" />
+            IsChecked="{Binding AsObjects}" />
         <Label
             Margin="10,70,0,0"
             HorizontalAlignment="Left"
             VerticalAlignment="Top"
-            Content="Indented:" />
+            Content="First Row Defines Columns:" />
         <CheckBox
+            x:Name="cbFirstRowDefinesColumns"
             Margin="165,76,90,0"
             HorizontalAlignment="Left"
             VerticalAlignment="Top"
             VerticalContentAlignment="Center"
-            IsChecked="{Binding Indented}" />
+            IsChecked="{Binding FirstRowDefinesColumns}"
+            ToolTip="A file in this format uses the first row cells as columns." />
         <Label
             Margin="10,100,0,0"
             HorizontalAlignment="Left"
             VerticalAlignment="Top"
-            Content="No Default Cell Values:" />
+            Content="Indented:" />
         <CheckBox
             Margin="165,106,90,0"
             HorizontalAlignment="Left"
             VerticalAlignment="Top"
             VerticalContentAlignment="Center"
-            IsChecked="{Binding NoDefaultCellValues}" />
+            IsChecked="{Binding Indented}"
+            ToolTip="The json in a file with this format is indented." />
+        <Label
+            Margin="10,130,0,0"
+            HorizontalAlignment="Left"
+            VerticalAlignment="Top"
+            Content="No Default Cell Values:" />
+        <CheckBox
+            Margin="165,136,90,0"
+            HorizontalAlignment="Left"
+            VerticalAlignment="Top"
+            VerticalContentAlignment="Center"
+            IsChecked="{Binding NoDefaultCellValues}"
+            ToolTip="Omit json values that are default json values (like boolean false, null string, etc.)." />
         <Button
             Height="23"
             Margin="0,0,170,10"

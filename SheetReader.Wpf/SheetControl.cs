@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Globalization;
 using System.Net;
 using System.Runtime.CompilerServices;
@@ -182,7 +183,7 @@ namespace SheetReader.Wpf
             var sizes = new Dictionary<int, double>();
             foreach (var row in rows)
             {
-                context.RowCol.RowIndex = row.RowIndex;
+                context.RowCol.RowIndex = row.SortIndex;
                 for (var i = columnIndex; i < _columnSettings.Count; i++)
                 {
                     var colWidth = _columnSettings[i].Width;
@@ -247,10 +248,10 @@ namespace SheetReader.Wpf
                 {
                     if (!sheet.Columns.TryGetValue(i, out var column))
                     {
-                        column = new Column
+                        column = new BookDocumentColumn(new Column
                         {
                             Index = i,
-                        };
+                        });
                     }
 
                     _columnSettings.Add(new SheetControlColumn(column) { Width = GetColumnWidth() });
@@ -437,8 +438,27 @@ namespace SheetReader.Wpf
                     var result = HitTest(e.GetPosition(_scrollViewer));
                     if (result.MovingColumnIndex.HasValue)
                     {
+                        // move column size
                         var next = Keyboard.Modifiers.HasFlag(ModifierKeys.Shift) && Keyboard.Modifiers.HasFlag(ModifierKeys.Control);
                         SetColumnsAutoSize(result.MovingColumnIndex.Value, next, sheet.Rows.Values);
+                    }
+                    else if (result.RowCol != null)
+                    {
+                        // sort by column
+                        if (sheet.SortDirection == ListSortDirection.Ascending && sheet.SortColumnIndex == result.RowCol.ColumnIndex)
+                        {
+                            sheet.UnsortRows();
+                        }
+                        else
+                        {
+                            var direction = ListSortDirection.Descending;
+                            if (sheet.SortDirection.HasValue && sheet.SortColumnIndex == result.RowCol.ColumnIndex)
+                            {
+                                direction = ListSortDirection.Ascending;
+                            }
+
+                            sheet.SortRows(result.RowCol.ColumnIndex, direction, null);
+                        }
                     }
                 }
             }
@@ -797,6 +817,20 @@ namespace SheetReader.Wpf
                     var textOffsetX = (colWidth - formattedCol.Width) / 2; // center horizontally
                     var textOffsetY = (context.RowHeight.Value - formattedCol.Height) / 2; // center vertically
                     drawingContext.DrawText(formattedCol, new Point(currentColX + context.LineSize.Value / 2 + textOffsetX, offsetY + textOffsetY));
+
+                    if (_control.Sheet.SortDirection.HasValue && _control.Sheet.SortColumnIndex == i)
+                    {
+                        var arrowText = _control.Sheet.SortDirection.Value == ListSortDirection.Ascending ? "▲" : "▼";
+                        var arrow = new FormattedText(arrowText, CultureInfo.CurrentCulture, FlowDirection.LeftToRight, context.Typeface, _control.FontSize, _control.Foreground, context.PixelsPerDip)
+                        {
+                            MaxTextWidth = colWidth,
+                            MaxLineCount = 1
+                        };
+
+                        const int arrowPadding = 10;
+                        var arrowOffsetY = (context.RowHeight.Value - arrow.Height) / 2; // center vertically
+                        drawingContext.DrawText(arrow, new Point(currentColX + colWidth - arrowPadding, offsetY + arrowOffsetY));
+                    }
 
                     drawingContext.DrawLine(context.LinePen, new Point(currentColX, offsetY), new Point(currentColX, offsetY + Math.Min(rowsHeight, viewHeight)));
                     currentColX += colWidth + context.LineSize.Value;

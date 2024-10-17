@@ -18,6 +18,7 @@ namespace SheetReader
 
             Row = row;
             RowIndex = row.Index;
+            SortIndex = RowIndex;
             IsHidden = !row.IsVisible;
             foreach (var cell in row.EnumerateCells())
             {
@@ -25,7 +26,10 @@ namespace SheetReader
                 if (bdCell == null)
                     continue;
 
-                _cells[cell.ColumnIndex] = CreateCell(cell);
+                if (!sheet.EnsureColumn(book, cell.ColumnIndex))
+                    break;
+
+                _cells[cell.ColumnIndex] = bdCell;
 
                 if (LastCellIndex == null || row.Index > LastCellIndex)
                 {
@@ -45,7 +49,8 @@ namespace SheetReader
         }
 
         public Row Row { get; }
-        public int RowIndex { get; }
+        public int RowIndex { get; } // orginal index
+        public virtual int SortIndex { get; set; } // current sorted index
         public virtual bool IsHidden { get; }
         public int? FirstCellIndex { get; }
         public int? LastCellIndex { get; }

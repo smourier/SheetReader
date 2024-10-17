@@ -50,6 +50,7 @@ namespace SheetReader.Wpf.Test
                 _fileName = value;
                 PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(FileName)));
                 PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(HasFile)));
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(HasNotTempFile)));
             }
         }
 
@@ -512,7 +513,7 @@ namespace SheetReader.Wpf.Test
 
         private sealed class StyledBookDocumentSheet(BookDocument book, Sheet sheet) : BookDocumentSheet(book, sheet)
         {
-            protected override IDictionary<int, Column> CreateColumns() => new ConcurrentDictionary<int, Column>();
+            protected override IDictionary<int, BookDocumentColumn> CreateColumns() => new ConcurrentDictionary<int, BookDocumentColumn>();
             protected override IDictionary<int, BookDocumentRow> CreateRows() => new ConcurrentDictionary<int, BookDocumentRow>();
             protected override BookDocumentRow CreateRow(BookDocument book, Row row) => new StyledBookDocumentRow(book, this, row);
         }

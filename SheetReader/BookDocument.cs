@@ -531,17 +531,13 @@ namespace SheetReader
                     writer.WriteStartObject();
                     writeSheetHeader(sheet);
 
-                    if (!sheet.ColumnsHaveBeenGenerated)
-                    {
-                        writeColumns(sheet);
-                    }
+                    writeColumns(sheet);
 
                     writer.WritePropertyName(format.RowsPropertyName ?? "cells");
                     writer.WriteStartArray();
 
                     if (sheet.FirstRowIndex.HasValue && sheet.LastRowIndex.HasValue)
                     {
-                        var rowOffset = sheet.ColumnsHaveBeenGenerated ? 0 : -1;
                         for (var rowIndex = sheet.FirstRowIndex.Value; rowIndex <= sheet.LastRowIndex.Value; rowIndex++)
                         {
                             sheet.Rows.TryGetValue(rowIndex, out var row);
@@ -551,7 +547,7 @@ namespace SheetReader
                                 {
                                     if (row.Cells.TryGetValue(columnIndex, out var cell))
                                     {
-                                        writePositionedCell(cell, rowIndex + rowOffset, columnIndex);
+                                        writePositionedCell(cell, rowIndex, columnIndex);
                                     }
                                 }
                             }
@@ -563,7 +559,7 @@ namespace SheetReader
                     return;
                 }
 
-                if (sheet.ColumnsHaveBeenGenerated && !options.HasFlag(ExportOptions.JsonRowsAsObject))
+                if (!options.HasFlag(ExportOptions.JsonRowsAsObject))
                 {
                     writer.WriteStartArray();
                     if (sheet.FirstRowIndex.HasValue && sheet.LastRowIndex.HasValue)

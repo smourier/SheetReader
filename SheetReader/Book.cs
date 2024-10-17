@@ -384,18 +384,21 @@ namespace SheetReader
                 JsonElement? cells = null;
                 if (Format.CellsPropertyName == null)
                 {
-                    if (Element.TryGetProperty("cells", out var element) && element.ValueKind == JsonValueKind.Array)
+                    if (Element.ValueKind == JsonValueKind.Object)
                     {
-                        cells = element;
-                    }
-                    else if (Element.TryGetProperty("Cells", out element) && element.ValueKind == JsonValueKind.Array)
-                    {
-                        cells = element;
+                        if (Element.TryGetProperty("cells", out var element) && element.ValueKind == JsonValueKind.Array)
+                        {
+                            cells = element;
+                        }
+                        else if (Element.TryGetProperty("Cells", out element) && element.ValueKind == JsonValueKind.Array)
+                        {
+                            cells = element;
+                        }
                     }
                 }
                 else
                 {
-                    if (Element.TryGetProperty(Format.CellsPropertyName, out var element) && element.ValueKind == JsonValueKind.Array)
+                    if (Element.ValueKind == JsonValueKind.Object && Element.TryGetProperty(Format.CellsPropertyName, out var element) && element.ValueKind == JsonValueKind.Array)
                     {
                         cells = element;
                     }
@@ -417,11 +420,11 @@ namespace SheetReader
                     {
                         rows = Element;
                     }
-                    else if (Element.TryGetProperty("rows", out var element) && element.ValueKind == JsonValueKind.Array)
+                    else if (Element.ValueKind == JsonValueKind.Object && Element.TryGetProperty("rows", out var element) && element.ValueKind == JsonValueKind.Array)
                     {
                         rows = element;
                     }
-                    else if (Element.TryGetProperty("Rows", out element) && element.ValueKind == JsonValueKind.Array)
+                    else if (Element.ValueKind == JsonValueKind.Object && Element.TryGetProperty("Rows", out element) && element.ValueKind == JsonValueKind.Array)
                     {
                         rows = element;
                     }
@@ -450,7 +453,7 @@ namespace SheetReader
                 }
                 else
                 {
-                    if (!Element.TryGetProperty(Format.RowsPropertyName, out var element) || element.ValueKind != JsonValueKind.Array)
+                    if (Element.ValueKind != JsonValueKind.Object || !Element.TryGetProperty(Format.RowsPropertyName, out var element) || element.ValueKind != JsonValueKind.Array)
                         yield break;
 
                     rows = element;
@@ -941,6 +944,11 @@ namespace SheetReader
                                 var row = CreateRow();
                                 if (row != null)
                                 {
+                                    if (Format.LoadOptions.HasFlag(LoadOptions.FirstRowDefinesColumns))
+                                    {
+                                        rowIndex--;
+                                    }
+
                                     row.Index = rowIndex - 1;
                                     var hidden = Reader.GetAttribute("hidden");
                                     if (hidden != null && Extensions.EqualsIgnoreCase(hidden, "true") || hidden == "1")

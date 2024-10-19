@@ -81,6 +81,54 @@ namespace SheetReader.Wpf
         public RowCol TopRight => new(TopLeft.RowIndex, BottomRight.ColumnIndex);
         public RowCol BottomLeft => new(BottomRight.RowIndex, TopLeft.ColumnIndex);
 
+        public bool CrossesRow(int rowIndex)
+        {
+            var topLeft = TopLeft;
+            if (rowIndex < topLeft.RowIndex)
+                return false;
+
+            var bottomRight = BottomRight;
+            if (rowIndex > bottomRight.RowIndex)
+                return false;
+
+            return true;
+        }
+
+        public bool CrossesColumn(int columnIndex)
+        {
+            var topLeft = TopLeft;
+            if (columnIndex < topLeft.ColumnIndex)
+                return false;
+
+            var bottomRight = BottomRight;
+            if (columnIndex > bottomRight.ColumnIndex)
+                return false;
+
+            return true;
+        }
+
+        public bool Contains(RowCol? rowCol)
+        {
+            if (rowCol == null)
+                return false;
+
+            var topLeft = TopLeft;
+            if (rowCol.ColumnIndex < topLeft.ColumnIndex)
+                return false;
+
+            if (rowCol.RowIndex < topLeft.RowIndex)
+                return false;
+
+            var bottomRight = BottomRight;
+            if (rowCol.ColumnIndex > bottomRight.ColumnIndex)
+                return false;
+
+            if (rowCol.RowIndex > bottomRight.RowIndex)
+                return false;
+
+            return true;
+        }
+
         public virtual void SelectRow(int rowIndex)
         {
             if (Control.Sheet == null || !Control.Sheet.LastRowIndex.HasValue)

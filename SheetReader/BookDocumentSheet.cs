@@ -177,10 +177,12 @@ namespace SheetReader
 
 
                 var index = 0;
+                var missingRows = Math.Max(0, FirstRowIndex.Value + 1 - rowsNoCell.Count - rowCells.Count);
                 var rows = new Dictionary<int, BookDocumentRow>();
                 var nullsFirst = direction == ListSortDirection.Descending;
                 if (nullsFirst)
                 {
+                    index += missingRows;
                     foreach (var row in rowsNoCell.OrderBy(r => r.rowIndex))
                     {
                         rows[index] = row.row;
@@ -202,11 +204,10 @@ namespace SheetReader
                         rows[index] = row.row;
                         row.row.SortIndex = index++;
                     }
+                    index += missingRows;
                 }
 
                 _rows = rows;
-                FirstRowIndex = 0;
-                LastRowIndex = index - 1;
             }
 
             SortColumnIndex = columnIndex;
@@ -230,7 +231,28 @@ namespace SheetReader
             else if (IsNullForComparison(iy))
                 return -1;
 
-            return ix!.CompareTo(iy);
+            var xt = ix!.GetType();
+            var yt = iy!.GetType();
+            if (xt.IsAssignableFrom(yt) || yt.IsAssignableFrom(xt))
+                return ix.CompareTo(iy);
+
+            try
+            {
+                return ix.CompareTo((IComparable)Convert.ChangeType(iy, xt));
+            }
+            catch
+            {
+                // continue
+            }
+            try
+            {
+                return iy.CompareTo((IComparable)Convert.ChangeType(ix, yt));
+            }
+            catch
+            {
+                // continue
+            }
+            return 0;
         }
 
         protected virtual bool IsNullForComparison(object? o) => o is null || Convert.IsDBNull(o);
@@ -250,6 +272,92 @@ namespace SheetReader
 
             row.Cells.TryGetValue(columnIndex, out var cell);
             return cell;
+        }
+
+        public virtual bool SwapColumns(int columnIndex1, int columnIndex2)
+        {
+            if (columnIndex1 == columnIndex2)
+                return false;
+
+            if (!FirstColumnIndex.HasValue || !LastColumnIndex.HasValue)
+                return false;
+
+            // swap columns
+            if (!Columns.Remove(columnIndex1, out var col1))
+                return false;
+
+            if (!Columns.Remove(columnIndex2, out var col2))
+                return false;
+
+            Columns.Add(columnIndex1, col2);
+            Columns.Add(columnIndex2, col1);
+
+            // recompute columns indices
+            var indices = new int[LastColumnIndex.Value - FirstColumnIndex.Value + 1];
+            var idx = 0;
+            if (columnIndex1 > columnIndex2)
+            {
+                for (var i = FirstColumnIndex.Value; i <= LastColumnIndex.Value; i++)
+                {
+                    if (i == columnIndex1)
+                    {
+                        // skip
+                        continue;
+                    }
+
+                    if (i == columnIndex2)
+                    {
+                        // insert
+                        indices[idx++] = columnIndex1;
+                        if (idx == indices.Length)
+                            break;
+                    }
+
+                    indices[idx++] = i;
+                    if (idx == indices.Length)
+                        break;
+                }
+            }
+            else
+            {
+                for (var i = FirstColumnIndex.Value; i <= LastColumnIndex.Value; i++)
+                {
+                    if (i == columnIndex1)
+                    {
+                        // skip
+                        continue;
+                    }
+
+                    indices[idx++] = i;
+                    if (idx == indices.Length)
+                        break;
+
+                    if (i == columnIndex2)
+                    {
+                        indices[idx++] = columnIndex1;
+                        if (idx == indices.Length)
+                            break;
+                    }
+                }
+            }
+
+            // rebuild all rows cells in new order
+            foreach (var kv in Rows)
+            {
+                var cells = kv.Value.CreateCells();
+                var idx2 = 0;
+                foreach (var i in indices)
+                {
+                    if (kv.Value.Cells.TryGetValue(i, out var cell))
+                    {
+                        cells[idx2] = cell;
+                    }
+                    idx2++;
+                }
+
+                kv.Value.ReplaceCells(cells);
+            }
+            return true;
         }
 
         public virtual string? FormatValue(object? value)

@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Globalization;
+using System.Linq;
 using System.Net;
 using System.Runtime.CompilerServices;
 using System.Text;
@@ -58,6 +59,11 @@ namespace SheetReader.Wpf
             typeof(SheetControl),
             new UIPropertyMetadata(Brushes.Green));
 
+        public static readonly DependencyProperty ColumnMovingColorProperty = DependencyProperty.Register(nameof(ColumnMovingColor),
+            typeof(Color),
+            typeof(SheetControl),
+            new UIPropertyMetadata(Colors.Black));
+
         public static readonly DependencyProperty TextAlignmentProperty = DependencyProperty.Register(nameof(TextAlignment),
             typeof(TextAlignment),
             typeof(SheetControl),
@@ -83,6 +89,7 @@ namespace SheetReader.Wpf
         public Brush LineBrush { get => (Brush)GetValue(LineBrushProperty); set => SetValue(LineBrushProperty, value); }
         public Brush HeaderBrush { get => (Brush)GetValue(HeaderBrushProperty); set => SetValue(HeaderBrushProperty, value); }
         public Brush SelectionBrush { get => (Brush)GetValue(SelectionBrushProperty); set => SetValue(SelectionBrushProperty, value); }
+        public Color ColumnMovingColor { get => (Color)GetValue(ColumnMovingColorProperty); set => SetValue(ColumnMovingColorProperty, value); }
         public TextAlignment TextAlignment { get => (TextAlignment)GetValue(TextAlignmentProperty); set => SetValue(TextAlignmentProperty, value); }
         public TextTrimming TextTrimming { get => (TextTrimming)GetValue(TextTrimmingProperty); set => SetValue(TextTrimmingProperty, value); }
         public Thickness CellPadding { get => (Thickness)GetValue(CellPaddingProperty); set => SetValue(CellPaddingProperty, value); }
@@ -90,7 +97,7 @@ namespace SheetReader.Wpf
         public event RoutedEventHandler SelectionChanged { add => AddHandler(SelectionChangedEvent, value); remove => RemoveHandler(SelectionChangedEvent, value); }
 
         private const double _minWidth = 4;
-        private const double _movingColumnTolerance = 4;
+        private const double _sizingColumnTolerance = 4;
 
         internal double GetRowHeight() => Math.Max(RowHeight, _minWidth);
         internal double GetRowMargin() => Math.Max(RowMargin, _minWidth);
@@ -107,6 +114,7 @@ namespace SheetReader.Wpf
         private ScrollViewer? _scrollViewer;
         private SheetGrid? _grid;
         private MovingColumn? _movingColumn;
+        private SizingColumn? _sizingColumn;
         private bool _extendingSelection;
         private readonly List<SheetControlColumn> _columnSettings = [];
 
@@ -119,6 +127,7 @@ namespace SheetReader.Wpf
         public SheetSelection Selection { get; }
         public IReadOnlyList<SheetControlColumn> ColumnSettings => _columnSettings.AsReadOnly();
 
+        public virtual SheetControlHitTestResult HitTest(MouseEventArgs e) => e != null ? HitTest(e.GetPosition(_scrollViewer)) : new();
         public virtual SheetControlHitTestResult HitTest(Point point) => _grid?.HitTest(point) ?? new();
         public virtual void SetColumnSize(int columnIndex, double width)
         {
@@ -135,6 +144,8 @@ namespace SheetReader.Wpf
             if (_scrollViewer == null)
                 return false;
 
+            rowIndex = Math.Max(rowIndex, 0);
+            columnIndex = Math.Max(columnIndex, 0);
             var selection = SheetSelection.From(this, rowIndex, columnIndex);
             if (selection == null)
                 return false;
@@ -418,12 +429,18 @@ namespace SheetReader.Wpf
 
         private void ReleaseCapture(bool commit)
         {
-            if (_movingColumn != null && !commit)
+            if (_sizingColumn != null)
             {
-                _movingColumn.Current = _movingColumn.Start;
+                _sizingColumn.Release(commit);
+                _sizingColumn = null;
             }
 
-            _movingColumn = null;
+            if (_movingColumn != null)
+            {
+                _movingColumn.Release(commit);
+                _movingColumn = null;
+            }
+
             Cursor = null;
             ReleaseMouseCapture();
         }
@@ -436,13 +453,13 @@ namespace SheetReader.Wpf
                 if (sheet != null)
                 {
                     var result = HitTest(e.GetPosition(_scrollViewer));
-                    if (result.MovingColumnIndex.HasValue)
+                    if (result.SizingColumnIndex.HasValue)
                     {
                         // move column size
                         var next = Keyboard.Modifiers.HasFlag(ModifierKeys.Shift) && Keyboard.Modifiers.HasFlag(ModifierKeys.Control);
-                        SetColumnsAutoSize(result.MovingColumnIndex.Value, next, sheet.Rows.Values);
+                        SetColumnsAutoSize(result.SizingColumnIndex.Value, next, sheet.Rows.Values);
                     }
-                    else if (result.RowCol != null)
+                    else if (result.RowCol != null && result.IsOverColumnHeader)
                     {
                         // sort by column
                         if (sheet.SortDirection == ListSortDirection.Ascending && sheet.SortColumnIndex == result.RowCol.ColumnIndex)
@@ -474,15 +491,23 @@ namespace SheetReader.Wpf
         {
             Focus();
             var result = HitTest(e.GetPosition(_scrollViewer));
-            if (result.MovingColumnIndex.HasValue)
+            if (result.IsOverColumnHeader && result.MovingColumnIndex.HasValue)
             {
-                Cursor = Cursors.SizeWE;
+                Cursor = Cursors.ScrollWE;
                 CaptureMouse();
                 _movingColumn = new MovingColumn(this, _columnSettings[result.MovingColumnIndex.Value], e.GetPosition(this));
                 return;
             }
 
-            if (!result.IsOverRowHeader && !result.IsOverColumnHeader && result.RowCol != null)
+            if (result.SizingColumnIndex.HasValue)
+            {
+                Cursor = Cursors.SizeWE;
+                CaptureMouse();
+                _sizingColumn = new SizingColumn(this, _columnSettings[result.SizingColumnIndex.Value], e.GetPosition(this));
+                return;
+            }
+
+            if (e.ClickCount == 1 && !result.IsOverRowHeader && !result.IsOverColumnHeader && result.RowCol != null)
             {
                 Selection.Select(result.RowCol);
                 _extendingSelection = true;
@@ -493,13 +518,18 @@ namespace SheetReader.Wpf
         {
             if (_movingColumn != null)
             {
-                Cursor = Cursors.SizeWE;
+                Cursor = Cursors.ScrollWE;
                 _movingColumn.Current = e.GetPosition(this);
+            }
+            else if (_sizingColumn != null)
+            {
+                Cursor = Cursors.SizeWE;
+                _sizingColumn.Current = e.GetPosition(this);
             }
             else
             {
                 var result = HitTest(e.GetPosition(_scrollViewer));
-                if (result.MovingColumnIndex.HasValue)
+                if (result.SizingColumnIndex.HasValue)
                 {
                     Cursor = Cursors.SizeWE;
                 }
@@ -515,14 +545,78 @@ namespace SheetReader.Wpf
             }
         }
 
-        private sealed class MovingColumn(SheetControl control, SheetControlColumn column, Point start)
+        private abstract class BaseColumn(SheetControl control, SheetControlColumn column, Point start)
         {
-            private Point _current;
-
+            public SheetControl Control { get; } = control;
             public SheetControlColumn Column { get; } = column;
             public double Width { get; } = column.Width;
             public Point Start { get; } = start;
-            public Point Current
+            public abstract Point Current { get; set; }
+
+            public virtual void Release(bool commit)
+            {
+                if (!commit)
+                {
+                    Current = Start;
+                }
+            }
+        }
+
+        private sealed class MovingColumn(SheetControl control, SheetControlColumn column, Point start) : BaseColumn(control, column, start)
+        {
+            public int SourceColumnIndex => Column.Column.Index;
+            public int TargetColumnIndex { get; private set; } = column.Column.Index;
+
+            private Point _current;
+            public override Point Current
+            {
+                get => _current;
+                set
+                {
+                    if (_current == value)
+                        return;
+
+                    _current = value;
+                    if (Control._scrollViewer == null || Control._scrollViewer.ViewportWidth == 0)
+                        return;
+
+                    var result = Control.HitTest(_current);
+                    if (result.RowCol != null && result.IsOverColumnHeader)
+                    {
+                        TargetColumnIndex = result.RowCol.ColumnIndex;
+                        var delta = _current.X - Start.X;
+                        var ratio = Control._scrollViewer.ExtentWidth / Control._scrollViewer.ViewportWidth;
+                        Control._scrollViewer.ScrollToHorizontalOffset(Control._scrollViewer.HorizontalOffset + delta * ratio);
+                        Control._grid?.InvalidateVisual();
+                    }
+                }
+            }
+
+            public override void Release(bool commit)
+            {
+                if (commit && SourceColumnIndex != TargetColumnIndex)
+                {
+                    Control.Sheet.SwapColumns(SourceColumnIndex, TargetColumnIndex);
+                    if (Control.Selection.CrossesColumn(SourceColumnIndex))
+                    {
+                        var tl = Control.Selection.TopLeft;
+                        var br = Control.Selection.BottomRight;
+                        var topRow = tl.RowIndex;
+                        var bottomRow = br.RowIndex;
+                        var leftCol = tl.ColumnIndex;
+                        var rightCol = br.ColumnIndex;
+                        Control.Selection.SelectTo(topRow, Math.Min(TargetColumnIndex, leftCol));
+                        Control.Selection.SelectTo(bottomRow, Math.Max(TargetColumnIndex, rightCol));
+                    }
+                }
+                Control._grid?.InvalidateVisual();
+            }
+        }
+
+        private sealed class SizingColumn(SheetControl control, SheetControlColumn column, Point start) : BaseColumn(control, column, start)
+        {
+            private Point _current;
+            public override Point Current
             {
                 get => _current;
                 set
@@ -535,7 +629,7 @@ namespace SheetReader.Wpf
                     var delta = _current.X - Start.X;
                     var newWidth = Math.Max(Width + delta, _minWidth);
                     Column.Width = newWidth;
-                    control._grid?.InvalidateMeasure();
+                    Control._grid?.InvalidateMeasure();
                 }
             }
         }
@@ -559,10 +653,12 @@ namespace SheetReader.Wpf
                 if (_lastResult != null && _lastResultPoint != null && _lastResultPoint == point)
                     return _lastResult;
 
-                var result = new SheetControlHitTestResult();
-                if (IsSheetVisible() && _control._scrollViewer != null &&
-                    point.X < _control._scrollViewer.ViewportWidth &&
-                    point.Y < _control._scrollViewer.ViewportHeight)
+                var result = new SheetControlHitTestResult
+                {
+                    IsInViewport = _control._scrollViewer != null && point.X < _control._scrollViewer.ViewportWidth && point.Y < _control._scrollViewer.ViewportHeight
+                };
+
+                if (IsSheetVisible() && _control._scrollViewer != null)
                 {
                     var context = _control.CreateStyleContext();
                     if (context == null)
@@ -602,10 +698,16 @@ namespace SheetReader.Wpf
                             var colSeparatorX = context.RowFullMargin.Value;
                             for (var i = 0; i < _control._columnSettings.Count; i++)
                             {
-                                colSeparatorX += _control._columnSettings[i].Width;
-                                if ((x + _movingColumnTolerance) >= colSeparatorX && (x - _movingColumnTolerance) <= (colSeparatorX + context.LineSize.Value))
+                                if (x >= (colSeparatorX + _sizingColumnTolerance) && x <= (colSeparatorX + _control._columnSettings[i].Width - _sizingColumnTolerance))
                                 {
                                     result.MovingColumnIndex = i;
+                                    break;
+                                }
+
+                                colSeparatorX += _control._columnSettings[i].Width;
+                                if ((x + _sizingColumnTolerance) >= colSeparatorX && (x - _sizingColumnTolerance) <= (colSeparatorX + context.LineSize.Value))
+                                {
+                                    result.SizingColumnIndex = i;
                                     break;
                                 }
 
@@ -643,6 +745,9 @@ namespace SheetReader.Wpf
 
             private int? GetColumnIndex(double x, double maxWidth, bool allowReturnNull)
             {
+                if (x < 0)
+                {
+                }
                 if (allowReturnNull && x < 0)
                     return -1;
 
@@ -693,6 +798,65 @@ namespace SheetReader.Wpf
                 if (!firstDrawnColumnIndex.HasValue || !lastDrawnColumnIndex.HasValue)
                     return;
 
+                // build a column indices range, rearrange columns if there's a moving column
+                int[] drawColumnsIndices;
+                var mc = _control._movingColumn;
+                if (mc != null && mc.SourceColumnIndex != mc.TargetColumnIndex)
+                {
+                    drawColumnsIndices = new int[lastDrawnColumnIndex.Value - firstDrawnColumnIndex.Value + 1];
+
+                    var idx = 0;
+                    if (mc.SourceColumnIndex > mc.TargetColumnIndex)
+                    {
+                        for (var i = firstDrawnColumnIndex.Value; i <= lastDrawnColumnIndex.Value; i++)
+                        {
+                            if (i == mc.SourceColumnIndex)
+                            {
+                                // skip
+                                continue;
+                            }
+
+                            if (i == mc.TargetColumnIndex)
+                            {
+                                // insert
+                                drawColumnsIndices[idx++] = mc.SourceColumnIndex;
+                                if (idx == drawColumnsIndices.Length)
+                                    break;
+                            }
+
+                            drawColumnsIndices[idx++] = i;
+                            if (idx == drawColumnsIndices.Length)
+                                break;
+                        }
+                    }
+                    else
+                    {
+                        for (var i = firstDrawnColumnIndex.Value; i <= lastDrawnColumnIndex.Value; i++)
+                        {
+                            if (i == mc.SourceColumnIndex)
+                            {
+                                // skip
+                                continue;
+                            }
+
+                            drawColumnsIndices[idx++] = i;
+                            if (idx == drawColumnsIndices.Length)
+                                break;
+
+                            if (i == mc.TargetColumnIndex)
+                            {
+                                drawColumnsIndices[idx++] = mc.SourceColumnIndex;
+                                if (idx == drawColumnsIndices.Length)
+                                    break;
+                            }
+                        }
+                    }
+                }
+                else
+                {
+                    drawColumnsIndices = Enumerable.Range(firstDrawnColumnIndex.Value, lastDrawnColumnIndex.Value - firstDrawnColumnIndex.Value + 1).ToArray();
+                }
+
                 var firstDrawnRowIndex = Math.Max((int)((offsetY - context.RowFullHeight!.Value) / context.RowFullHeight!.Value), 0);
                 var lastDrawnRowIndex = Math.Max(Math.Min((int)((offsetY - context.RowFullHeight.Value + viewHeight) / context.RowFullHeight.Value), _control.Sheet.LastRowIndex!.Value), firstDrawnRowIndex);
 
@@ -719,7 +883,7 @@ namespace SheetReader.Wpf
                         {
                             context.RowCol.RowIndex = i;
                             var ccx = startCurrentColX;
-                            for (var j = firstDrawnColumnIndex.Value; j <= lastDrawnColumnIndex; j++)
+                            foreach (var j in drawColumnsIndices)
                             {
                                 var colWidth = _control._columnSettings[j].Width;
                                 var cellWidth = colWidth - (cellPadding.Right + cellPadding.Left);
@@ -800,14 +964,39 @@ namespace SheetReader.Wpf
                 columnsRect.Height = context.RowHeight.Value;
                 drawingContext.DrawRectangle(_control.HeaderBrush, null, columnsRect);
 
-                var currentColX = startCurrentColX;
-                for (var i = firstDrawnColumnIndex.Value; i <= lastDrawnColumnIndex; i++)
+                Brush? movingLeftBrush = null;
+                Brush? movingRightBrush = null;
+                if (_control.ColumnMovingColor != Colors.Transparent)
                 {
-                    // draw col name
+                    movingLeftBrush = new LinearGradientBrush(_control.ColumnMovingColor, Colors.White, 0) { Opacity = 0.2f };
+                    movingRightBrush = new LinearGradientBrush(Colors.White, _control.ColumnMovingColor, 0) { Opacity = movingLeftBrush.Opacity };
+                }
+
+                var currentColX = startCurrentColX;
+                foreach (var i in drawColumnsIndices)
+                {
                     var colWidth = _control._columnSettings[i].Width;
 
+                    var isMovingColumn = _control._movingColumn != null && _control._movingColumn.SourceColumnIndex != _control._movingColumn.TargetColumnIndex && _control._movingColumn.SourceColumnIndex == i;
+                    if (isMovingColumn && movingLeftBrush != null && movingRightBrush != null)
+                    {
+                        var h = offsetY + Math.Min(rowsHeight, viewHeight);
+                        drawingContext.DrawRectangle(movingLeftBrush, null, new Rect(currentColX, offsetY, colWidth / 2, h));
+                        drawingContext.DrawRectangle(movingRightBrush, null, new Rect(currentColX + colWidth / 2, offsetY, colWidth / 2, h));
+                    }
+
+                    // draw col name
                     _control.Sheet.Columns.TryGetValue(i, out var col);
-                    var name = col?.Name ?? Row.GetExcelColumnName(i);
+
+                    string name;
+                    if (col?.Name != null)
+                    {
+                        name = "'" + col.Name + "'";
+                    }
+                    else
+                    {
+                        name = Row.GetExcelColumnName(i);
+                    }
                     var formattedCol = new FormattedText(name, CultureInfo.CurrentCulture, FlowDirection.LeftToRight, context.Typeface, _control.FontSize, _control.Foreground, context.PixelsPerDip)
                     {
                         MaxTextWidth = colWidth,
@@ -856,7 +1045,7 @@ namespace SheetReader.Wpf
                     {
                         var focusRc = rc;
                         focusRc.Inflate(focusMargin, focusMargin);
-                        var focusPen = new Pen(selectionBrush, context.LineSize.Value + 1) { DashStyle = new DashStyle([0.0, 3.0], 0) };
+                        var focusPen = new Pen(selectionBrush, context.LineSize.Value + 1) { DashStyle = new DashStyle([0, 3], 0) };
                         drawingContext.DrawRectangle(null, focusPen, focusRc);
                     }
 

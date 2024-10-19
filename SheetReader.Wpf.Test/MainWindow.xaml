@@ -82,6 +82,7 @@
             <TabControl.ContentTemplate>
                 <DataTemplate>
                     <smx:SheetControl
+                        MouseDoubleClick="SheetControl_MouseDoubleClick"
                         MouseMove="SheetControl_MouseMove"
                         SelectionChanged="SheetControl_SelectionChanged"
                         Sheet="{Binding}" />

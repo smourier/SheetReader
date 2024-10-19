@@ -5,7 +5,7 @@ namespace SheetReader
 {
     public class BookDocumentRow
     {
-        private readonly IDictionary<int, BookDocumentCell> _cells;
+        private IDictionary<int, BookDocumentCell> _cells;
 
         public BookDocumentRow(BookDocument book, BookDocumentSheet sheet, Row row)
         {
@@ -56,7 +56,7 @@ namespace SheetReader
         public int? LastCellIndex { get; }
         public IDictionary<int, BookDocumentCell> Cells => _cells;
 
-        protected virtual IDictionary<int, BookDocumentCell> CreateCells() => new Dictionary<int, BookDocumentCell>();
+        protected virtual internal IDictionary<int, BookDocumentCell> CreateCells() => new Dictionary<int, BookDocumentCell>();
         protected virtual BookDocumentCell CreateCell(Cell cell)
         {
             ArgumentNullException.ThrowIfNull(cell);
@@ -64,6 +64,12 @@ namespace SheetReader
                 return cell.IsError ? new BookDocumentJsonCellError(json) : new BookDocumentJsonCell(json);
 
             return cell.IsError ? new BookDocumentCellError(cell) : new BookDocumentCell(cell);
+        }
+
+        protected virtual internal void ReplaceCells(IDictionary<int, BookDocumentCell> cells)
+        {
+            ArgumentNullException.ThrowIfNull(cells);
+            _cells = cells;
         }
 
         public override string ToString() => RowIndex.ToString();

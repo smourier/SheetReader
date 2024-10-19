@@ -478,32 +478,49 @@ namespace SheetReader.Wpf.Test
             }
         }
 
+        private void SheetControl_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+        {
+            var ctl = (SheetControl)sender;
+            var result = ctl.HitTest(e);
+            var cell = result.Cell;
+            if (cell == null)
+                return;
+
+            var formatted = ctl.Sheet.FormatValue(cell.Value);
+            MessageBox.Show(formatted, result.RowCol!.ExcelReference);
+        }
+
         private void SheetControl_MouseMove(object sender, MouseEventArgs e)
         {
             var ctl = (SheetControl)sender;
-            var result = ctl.HitTest(e.GetPosition(ctl));
+            status.Text = GetHitTestText(ctl, e, 100);
+        }
+
+        private string GetHitTestText(SheetControl ctl, MouseEventArgs e, int max)
+        {
+            var result = ctl.HitTest(e);
             if (result.RowCol != null)
             {
                 if (result.IsOverRowHeader)
-                {
-                    status.Text = $"Row: {result.RowCol.RowIndex + 1}";
-                    return;
-                }
+                    return $"Row: {result.RowCol.RowIndex + 1}";
 
                 if (result.IsOverColumnHeader)
-                {
-                    status.Text = $"Column: {Row.GetExcelColumnName(result.RowCol.ColumnIndex)} ({result.RowCol.ColumnIndex})";
-                    return;
-                }
+                    return $"Column: {Row.GetExcelColumnName(result.RowCol.ColumnIndex)} ({result.RowCol.ColumnIndex})";
 
                 var cell = result.Cell;
                 if (cell != null)
                 {
-                    status.Text = $"Cell: {result.RowCol.ExcelReference}: {ctl.Sheet.FormatValue(cell.Value)}";
-                    return;
+                    var type = cell.Value?.GetType().Name ?? "<null>";
+                    var formatted = ctl.Sheet.FormatValue(cell.Value)?.Replace('\r', '⇣')?.Replace('\n', '⇣');
+
+                    if (formatted?.Length > max)
+                    {
+                        formatted = formatted[..max] + "…";
+                    }
+                    return $"Cell: {result.RowCol.ExcelReference}: '{formatted}' of type {type}";
                 }
             }
-            status.Text = string.Empty;
+            return string.Empty;
         }
 
         private sealed class StyledBookDocument : BookDocument

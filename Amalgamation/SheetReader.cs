@@ -23,8 +23,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 /*
-AssemblyVersion: 3.2.1.0
-AssemblyFileVersion: 3.2.1.0
+AssemblyVersion: 3.4.0.0
+AssemblyFileVersion: 3.4.0.0
 */
 using Extensions = SheetReader.Utilities.Extensions;
 using SheetReader.Utilities;
@@ -419,18 +419,21 @@ namespace SheetReader
 	                JsonElement? cells = null;
 	                if (Format.CellsPropertyName == null)
 	                {
-	                    if (Element.TryGetProperty("cells", out var element) && element.ValueKind == JsonValueKind.Array)
+	                    if (Element.ValueKind == JsonValueKind.Object)
 	                    {
-	                        cells = element;
-	                    }
-	                    else if (Element.TryGetProperty("Cells", out element) && element.ValueKind == JsonValueKind.Array)
-	                    {
-	                        cells = element;
+	                        if (Element.TryGetProperty("cells", out var element) && element.ValueKind == JsonValueKind.Array)
+	                        {
+	                            cells = element;
+	                        }
+	                        else if (Element.TryGetProperty("Cells", out element) && element.ValueKind == JsonValueKind.Array)
+	                        {
+	                            cells = element;
+	                        }
 	                    }
 	                }
 	                else
 	                {
-	                    if (Element.TryGetProperty(Format.CellsPropertyName, out var element) && element.ValueKind == JsonValueKind.Array)
+	                    if (Element.ValueKind == JsonValueKind.Object && Element.TryGetProperty(Format.CellsPropertyName, out var element) && element.ValueKind == JsonValueKind.Array)
 	                    {
 	                        cells = element;
 	                    }
@@ -452,11 +455,11 @@ namespace SheetReader
 	                    {
 	                        rows = Element;
 	                    }
-	                    else if (Element.TryGetProperty("rows", out var element) && element.ValueKind == JsonValueKind.Array)
+	                    else if (Element.ValueKind == JsonValueKind.Object && Element.TryGetProperty("rows", out var element) && element.ValueKind == JsonValueKind.Array)
 	                    {
 	                        rows = element;
 	                    }
-	                    else if (Element.TryGetProperty("Rows", out element) && element.ValueKind == JsonValueKind.Array)
+	                    else if (Element.ValueKind == JsonValueKind.Object && Element.TryGetProperty("Rows", out element) && element.ValueKind == JsonValueKind.Array)
 	                    {
 	                        rows = element;
 	                    }
@@ -485,7 +488,7 @@ namespace SheetReader
 	                }
 	                else
 	                {
-	                    if (!Element.TryGetProperty(Format.RowsPropertyName, out var element) || element.ValueKind != JsonValueKind.Array)
+	                    if (Element.ValueKind != JsonValueKind.Object || !Element.TryGetProperty(Format.RowsPropertyName, out var element) || element.ValueKind != JsonValueKind.Array)
 	                        yield break;
 	
 	                    rows = element;
@@ -976,6 +979,11 @@ namespace SheetReader
 	                                var row = CreateRow();
 	                                if (row != null)
 	                                {
+	                                    if (Format.LoadOptions.HasFlag(LoadOptions.FirstRowDefinesColumns))
+	                                    {
+	                                        rowIndex--;
+	                                    }
+	
 	                                    row.Index = rowIndex - 1;
 	                                    var hidden = Reader.GetAttribute("hidden");
 	                                    if (hidden != null && Extensions.EqualsIgnoreCase(hidden, "true") || hidden == "1")
@@ -1431,6 +1439,18 @@ namespace SheetReader
 	                if (value is decimal dec && dec == 0m)
 	                    return true;
 	
+	                if (value is DateTime dt && dt == DateTime.MinValue)
+	                    return true;
+	
+	                if (value is DateTimeOffset dto && dto == DateTimeOffset.MinValue)
+	                    return true;
+	
+	                if (value is TimeSpan ts && ts == TimeSpan.Zero)
+	                    return true;
+	
+	                if (value is Guid g && g == Guid.Empty)
+	                    return true;
+	
 	                if (value is uint ui && ui == 0)
 	                    return true;
 	
@@ -1442,14 +1462,18 @@ namespace SheetReader
 	
 	            void writePositionedCell(BookDocumentCell? cell, int rowIndex, int columnIndex)
 	            {
-	                // don't output null values
-	                if (cell == null || cell.Value == null || Convert.IsDBNull(cell.Value))
-	                    return;
-	
 	                writer.WriteStartObject();
 	                writer.WriteNumber("r", rowIndex);
 	                writer.WriteNumber("c", columnIndex);
 	                writer.WritePropertyName("value");
+	
+	                // don't output null values
+	                if (cell == null || cell.Value == null || Convert.IsDBNull(cell.Value))
+	                {
+	                    writer.WriteNullValue();
+	                    writer.WriteEndObject();
+	                    return;
+	                }
 	
 	                if (cell.IsError)
 	                {
@@ -1522,6 +1546,20 @@ namespace SheetReader
 	                if (cell.Value is decimal dec)
 	                {
 	                    writer.WriteNumberValue(dec);
+	                    writer.WriteEndObject();
+	                    return;
+	                }
+	
+	                if (cell.Value is DateTime dt)
+	                {
+	                    writer.WriteStringValue(dt.ToString("u"));
+	                    writer.WriteEndObject();
+	                    return;
+	                }
+	
+	                if (cell.Value is DateTimeOffset dto)
+	                {
+	                    writer.WriteStringValue(dto.ToString("u"));
 	                    writer.WriteEndObject();
 	                    return;
 	                }
@@ -1638,6 +1676,18 @@ namespace SheetReader
 	                    return;
 	                }
 	
+	                if (cell.Value is DateTime dt)
+	                {
+	                    writer.WriteStringValue(dt.ToString("u"));
+	                    return;
+	                }
+	
+	                if (cell.Value is DateTimeOffset dto)
+	                {
+	                    writer.WriteStringValue(dto.ToString("u"));
+	                    return;
+	                }
+	
 	                if (cell.Value is byte[] bytes)
 	                {
 	                    writer.WriteBase64StringValue(bytes);
@@ -1699,7 +1749,7 @@ namespace SheetReader
 	                        row?.Cells.TryGetValue(columnIndex, out cell);
 	                        if (!options.HasFlag(ExportOptions.JsonNoDefaultCellValues) || (cell != null && !isDefaultJsonValue(cell.Value)))
 	                        {
-	                            string colName = colNames[columnIndex];
+	                            var colName = colNames[columnIndex];
 	                            writer.WritePropertyName(colName);
 	                            writeCell(cell);
 	                        }
@@ -1749,17 +1799,13 @@ namespace SheetReader
 	                    writer.WriteStartObject();
 	                    writeSheetHeader(sheet);
 	
-	                    if (!sheet.ColumnsHaveBeenGenerated)
-	                    {
-	                        writeColumns(sheet);
-	                    }
+	                    writeColumns(sheet);
 	
 	                    writer.WritePropertyName(format.RowsPropertyName ?? "cells");
 	                    writer.WriteStartArray();
 	
 	                    if (sheet.FirstRowIndex.HasValue && sheet.LastRowIndex.HasValue)
 	                    {
-	                        var rowOffset = sheet.ColumnsHaveBeenGenerated ? 0 : -1;
 	                        for (var rowIndex = sheet.FirstRowIndex.Value; rowIndex <= sheet.LastRowIndex.Value; rowIndex++)
 	                        {
 	                            sheet.Rows.TryGetValue(rowIndex, out var row);
@@ -1769,7 +1815,10 @@ namespace SheetReader
 	                                {
 	                                    if (row.Cells.TryGetValue(columnIndex, out var cell))
 	                                    {
-	                                        writePositionedCell(cell, rowIndex + rowOffset, columnIndex);
+	                                        if (!options.HasFlag(ExportOptions.JsonNoDefaultCellValues) || (cell != null && !isDefaultJsonValue(cell.Value)))
+	                                        {
+	                                            writePositionedCell(cell, rowIndex, columnIndex);
+	                                        }
 	                                    }
 	                                }
 	                            }
@@ -1781,7 +1830,7 @@ namespace SheetReader
 	                    return;
 	                }
 	
-	                if (sheet.ColumnsHaveBeenGenerated && !options.HasFlag(ExportOptions.JsonRowsAsObject))
+	                if (!options.HasFlag(ExportOptions.JsonRowsAsObject))
 	                {
 	                    writer.WriteStartArray();
 	                    if (sheet.FirstRowIndex.HasValue && sheet.LastRowIndex.HasValue)
@@ -1878,6 +1927,22 @@ namespace SheetReader
 	    {
 	    }
 	
+	public class BookDocumentColumn
+	    {
+	        public BookDocumentColumn(Column column)
+	        {
+	            ArgumentNullException.ThrowIfNull(column);
+	            Column = column;
+	        }
+	
+	        public Column Column { get; }
+	        public virtual int Index => Column.Index;
+	        public virtual string? Name => Column.Name;
+	        public virtual bool IsAutoGenerated { get; set; }
+	
+	        public override string ToString() => Column.Name ?? string.Empty;
+	    }
+	
 	public class BookDocumentJsonCell : BookDocumentCell, IWithJsonElement
 	    {
 	        public BookDocumentJsonCell(Book.JsonCell cell)
@@ -1898,7 +1963,7 @@ namespace SheetReader
 	
 	public class BookDocumentRow
 	    {
-	        private readonly IDictionary<int, BookDocumentCell> _cells;
+	        private IDictionary<int, BookDocumentCell> _cells;
 	
 	        public BookDocumentRow(BookDocument book, BookDocumentSheet sheet, Row row)
 	        {
@@ -1911,6 +1976,7 @@ namespace SheetReader
 	
 	            Row = row;
 	            RowIndex = row.Index;
+	            SortIndex = RowIndex;
 	            IsHidden = !row.IsVisible;
 	            foreach (var cell in row.EnumerateCells())
 	            {
@@ -1918,7 +1984,10 @@ namespace SheetReader
 	                if (bdCell == null)
 	                    continue;
 	
-	                _cells[cell.ColumnIndex] = CreateCell(cell);
+	                if (!sheet.EnsureColumn(book, cell.ColumnIndex))
+	                    break;
+	
+	                _cells[cell.ColumnIndex] = bdCell;
 	
 	                if (LastCellIndex == null || row.Index > LastCellIndex)
 	                {
@@ -1938,13 +2007,14 @@ namespace SheetReader
 	        }
 	
 	        public Row Row { get; }
-	        public int RowIndex { get; }
+	        public int RowIndex { get; } // orginal index
+	        public virtual int SortIndex { get; set; } // current sorted index
 	        public virtual bool IsHidden { get; }
 	        public int? FirstCellIndex { get; }
 	        public int? LastCellIndex { get; }
 	        public IDictionary<int, BookDocumentCell> Cells => _cells;
 	
-	        protected virtual IDictionary<int, BookDocumentCell> CreateCells() => new Dictionary<int, BookDocumentCell>();
+	        protected virtual internal IDictionary<int, BookDocumentCell> CreateCells() => new Dictionary<int, BookDocumentCell>();
 	        protected virtual BookDocumentCell CreateCell(Cell cell)
 	        {
 	            ArgumentNullException.ThrowIfNull(cell);
@@ -1954,13 +2024,19 @@ namespace SheetReader
 	            return cell.IsError ? new BookDocumentCellError(cell) : new BookDocumentCell(cell);
 	        }
 	
+	        protected virtual internal void ReplaceCells(IDictionary<int, BookDocumentCell> cells)
+	        {
+	            ArgumentNullException.ThrowIfNull(cells);
+	            _cells = cells;
+	        }
+	
 	        public override string ToString() => RowIndex.ToString();
 	    }
 	
 	public class BookDocumentSheet
 	    {
-	        private readonly IDictionary<int, BookDocumentRow> _rows;
-	        private readonly IDictionary<int, Column> _columns;
+	        private IDictionary<int, BookDocumentRow> _rows;
+	        private readonly IDictionary<int, BookDocumentColumn> _columns;
 	
 	        public BookDocumentSheet(BookDocument book, Sheet sheet)
 	        {
@@ -2012,7 +2088,11 @@ namespace SheetReader
 	
 	            foreach (var col in sheet.EnumerateColumns())
 	            {
-	                _columns[col.Index] = col;
+	                var column = CreateColumn(col);
+	                if (column == null)
+	                    continue;
+	
+	                _columns[col.Index] = column;
 	                if (LastColumnIndex == null || col.Index > LastColumnIndex)
 	                {
 	                    LastColumnIndex = col.Index;
@@ -2023,48 +2103,184 @@ namespace SheetReader
 	                    FirstColumnIndex = col.Index;
 	                }
 	
-	                e = new StateChangedEventArgs(StateChangedType.ColumnAddded, this, null, col);
+	                e = new StateChangedEventArgs(StateChangedType.ColumnAddded, this, null, column);
 	                book.OnStateChanged(this, e);
 	                if (e.Cancel)
 	                    break;
-	            }
-	
-	            if (_columns.Count == 0 && _rows.Count > 0)
-	            {
-	                ColumnsHaveBeenGenerated = true;
-	                for (var i = 0; i < _rows[0].Cells.Count; i++)
-	                {
-	                    var col = new Column { Index = i };
-	                    _columns[i] = col;
-	                    if (!LastColumnIndex.HasValue || col.Index > LastColumnIndex)
-	                    {
-	                        LastColumnIndex = col.Index;
-	                    }
-	
-	                    if (!FirstColumnIndex.HasValue || col.Index < FirstColumnIndex)
-	                    {
-	                        FirstColumnIndex = col.Index;
-	                    }
-	
-	                    e = new StateChangedEventArgs(StateChangedType.ColumnAddded, this, null, col);
-	                    book.OnStateChanged(this, e);
-	                    if (e.Cancel)
-	                        break;
-	                }
 	            }
 	        }
 	
 	        public virtual string Name { get; }
 	        public virtual bool IsHidden { get; }
-	        public bool ColumnsHaveBeenGenerated { get; protected set; }
 	        public int? FirstColumnIndex { get; protected set; }
 	        public int? LastColumnIndex { get; protected set; }
 	        public int? FirstRowIndex { get; protected set; }
 	        public int? LastRowIndex { get; protected set; }
 	        public IDictionary<int, BookDocumentRow> Rows => _rows;
-	        public IDictionary<int, Column> Columns => _columns;
+	        public IDictionary<int, BookDocumentColumn> Columns => _columns;
+	        public ListSortDirection? SortDirection { get; protected set; }
+	        public int? SortColumnIndex { get; protected set; }
 	
 	        public override string ToString() => Name;
+	
+	        public virtual bool EnsureColumn(BookDocument book, int columnIndex)
+	        {
+	            ArgumentNullException.ThrowIfNull(book);
+	            if (Columns.ContainsKey(columnIndex))
+	                return true;
+	
+	            var column = CreateColumn(new Column { Index = columnIndex, Name = Row.GetExcelColumnName(columnIndex) });
+	            column.IsAutoGenerated = true;
+	            _columns[columnIndex] = column;
+	            if (!LastColumnIndex.HasValue || columnIndex > LastColumnIndex)
+	            {
+	                LastColumnIndex = columnIndex;
+	            }
+	
+	            if (!FirstColumnIndex.HasValue || columnIndex < FirstColumnIndex)
+	            {
+	                FirstColumnIndex = columnIndex;
+	            }
+	
+	            var e = new StateChangedEventArgs(StateChangedType.ColumnAddded, this, null, column);
+	            book.OnStateChanged(this, e);
+	            if (e.Cancel)
+	                return false;
+	
+	            return true;
+	        }
+	
+	        public virtual void UnsortRows()
+	        {
+	            if (!FirstRowIndex.HasValue || !LastRowIndex.HasValue)
+	                return;
+	
+	            if (_rows.Count > 0)
+	            {
+	                var rows = new Dictionary<int, BookDocumentRow>();
+	                foreach (var kv in _rows)
+	                {
+	                    rows[kv.Value.RowIndex] = kv.Value;
+	                }
+	                _rows = rows;
+	            }
+	
+	            SortColumnIndex = null;
+	            SortDirection = null;
+	        }
+	
+	        public virtual void SortRows(int columnIndex, ListSortDirection direction, Comparison<BookDocumentCell?>? comparison = null)
+	        {
+	            if (!FirstRowIndex.HasValue || !LastRowIndex.HasValue)
+	                return;
+	
+	            // determine sortable rows
+	            var rowCells = new List<(int rowIndex, BookDocumentCell? cell)>();
+	            var rowsNoCell = new List<(int rowIndex, BookDocumentRow row)>();
+	            foreach (var kv in _rows)
+	            {
+	                if (kv.Value.Cells.TryGetValue(columnIndex, out var cell) && cell.Value != null)
+	                {
+	                    rowCells.Add((kv.Key, cell));
+	                }
+	                else
+	                {
+	                    rowsNoCell.Add((kv.Key, kv.Value));
+	                }
+	            }
+	
+	            if (rowCells.Count > 0)
+	            {
+	                rowCells.Sort((x, y) =>
+	                {
+	                    var cmp = Compare(x.cell, y.cell, comparison);
+	                    if (direction == ListSortDirection.Descending)
+	                        return cmp;
+	
+	                    return -cmp;
+	                });
+	
+	
+	                var index = 0;
+	                var missingRows = Math.Max(0, FirstRowIndex.Value + 1 - rowsNoCell.Count - rowCells.Count);
+	                var rows = new Dictionary<int, BookDocumentRow>();
+	                var nullsFirst = direction == ListSortDirection.Descending;
+	                if (nullsFirst)
+	                {
+	                    index += missingRows;
+	                    foreach (var row in rowsNoCell.OrderBy(r => r.rowIndex))
+	                    {
+	                        rows[index] = row.row;
+	                        row.row.SortIndex = index++;
+	                    }
+	                }
+	
+	                for (var i = 0; i < rowCells.Count; i++)
+	                {
+	                    var row = _rows[rowCells[i].rowIndex];
+	                    rows[index] = row;
+	                    row.SortIndex = index++;
+	                }
+	
+	                if (!nullsFirst)
+	                {
+	                    foreach (var row in rowsNoCell.OrderBy(r => r.rowIndex))
+	                    {
+	                        rows[index] = row.row;
+	                        row.row.SortIndex = index++;
+	                    }
+	                    index += missingRows;
+	                }
+	
+	                _rows = rows;
+	            }
+	
+	            SortColumnIndex = columnIndex;
+	            SortDirection = direction;
+	        }
+	
+	        protected virtual int Compare(BookDocumentCell? x, BookDocumentCell? y, Comparison<BookDocumentCell?>? comparison)
+	        {
+	            if (comparison != null)
+	                return comparison(x, y);
+	
+	            var ix = x?.Value as IComparable;
+	            var iy = y?.Value as IComparable;
+	            if (IsNullForComparison(ix))
+	            {
+	                if (IsNullForComparison(iy))
+	                    return 0;
+	
+	                return 1;
+	            }
+	            else if (IsNullForComparison(iy))
+	                return -1;
+	
+	            var xt = ix!.GetType();
+	            var yt = iy!.GetType();
+	            if (xt.IsAssignableFrom(yt) || yt.IsAssignableFrom(xt))
+	                return ix.CompareTo(iy);
+	
+	            try
+	            {
+	                return ix.CompareTo((IComparable)Convert.ChangeType(iy, xt));
+	            }
+	            catch
+	            {
+	                // continue
+	            }
+	            try
+	            {
+	                return iy.CompareTo((IComparable)Convert.ChangeType(ix, yt));
+	            }
+	            catch
+	            {
+	                // continue
+	            }
+	            return 0;
+	        }
+	
+	        protected virtual bool IsNullForComparison(object? o) => o is null || Convert.IsDBNull(o);
 	
 	        public BookDocumentCell? GetCell(RowCol? rowCol)
 	        {
@@ -2081,6 +2297,92 @@ namespace SheetReader
 	
 	            row.Cells.TryGetValue(columnIndex, out var cell);
 	            return cell;
+	        }
+	
+	        public virtual bool SwapColumns(int columnIndex1, int columnIndex2)
+	        {
+	            if (columnIndex1 == columnIndex2)
+	                return false;
+	
+	            if (!FirstColumnIndex.HasValue || !LastColumnIndex.HasValue)
+	                return false;
+	
+	            // swap columns
+	            if (!Columns.Remove(columnIndex1, out var col1))
+	                return false;
+	
+	            if (!Columns.Remove(columnIndex2, out var col2))
+	                return false;
+	
+	            Columns.Add(columnIndex1, col2);
+	            Columns.Add(columnIndex2, col1);
+	
+	            // recompute columns indices
+	            var indices = new int[LastColumnIndex.Value - FirstColumnIndex.Value + 1];
+	            var idx = 0;
+	            if (columnIndex1 > columnIndex2)
+	            {
+	                for (var i = FirstColumnIndex.Value; i <= LastColumnIndex.Value; i++)
+	                {
+	                    if (i == columnIndex1)
+	                    {
+	                        // skip
+	                        continue;
+	                    }
+	
+	                    if (i == columnIndex2)
+	                    {
+	                        // insert
+	                        indices[idx++] = columnIndex1;
+	                        if (idx == indices.Length)
+	                            break;
+	                    }
+	
+	                    indices[idx++] = i;
+	                    if (idx == indices.Length)
+	                        break;
+	                }
+	            }
+	            else
+	            {
+	                for (var i = FirstColumnIndex.Value; i <= LastColumnIndex.Value; i++)
+	                {
+	                    if (i == columnIndex1)
+	                    {
+	                        // skip
+	                        continue;
+	                    }
+	
+	                    indices[idx++] = i;
+	                    if (idx == indices.Length)
+	                        break;
+	
+	                    if (i == columnIndex2)
+	                    {
+	                        indices[idx++] = columnIndex1;
+	                        if (idx == indices.Length)
+	                            break;
+	                    }
+	                }
+	            }
+	
+	            // rebuild all rows cells in new order
+	            foreach (var kv in Rows)
+	            {
+	                var cells = kv.Value.CreateCells();
+	                var idx2 = 0;
+	                foreach (var i in indices)
+	                {
+	                    if (kv.Value.Cells.TryGetValue(i, out var cell))
+	                    {
+	                        cells[idx2] = cell;
+	                    }
+	                    idx2++;
+	                }
+	
+	                kv.Value.ReplaceCells(cells);
+	            }
+	            return true;
 	        }
 	
 	        public virtual string? FormatValue(object? value)
@@ -2139,7 +2441,8 @@ namespace SheetReader
 	        }
 	
 	        protected virtual BookDocumentRow CreateRow(BookDocument book, Row row) => new(book, this, row);
-	        protected virtual IDictionary<int, Column> CreateColumns() => new Dictionary<int, Column>();
+	        protected virtual BookDocumentColumn CreateColumn(Column column) => new(column);
+	        protected virtual IDictionary<int, BookDocumentColumn> CreateColumns() => new Dictionary<int, BookDocumentColumn>();
 	        protected virtual IDictionary<int, BookDocumentRow> CreateRows() => new Dictionary<int, BookDocumentRow>();
 	    }
 	
@@ -2707,13 +3010,13 @@ namespace SheetReader
 	        StateChangedType type,
 	        BookDocumentSheet sheet,
 	        BookDocumentRow? row = null,
-	        Column? column = null,
+	        BookDocumentColumn? column = null,
 	        BookDocumentCell? cell = null) : CancelEventArgs
 	    {
 	        public StateChangedType Type { get; } = type;
 	        public BookDocumentSheet Sheet { get; } = sheet;
 	        public BookDocumentRow? Row { get; } = row;
-	        public Column? Column { get; } = column;
+	        public BookDocumentColumn? Column { get; } = column;
 	        public BookDocumentCell? Cell { get; } = cell;
 	    }
 	

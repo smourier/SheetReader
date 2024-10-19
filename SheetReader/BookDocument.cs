@@ -213,6 +213,18 @@ namespace SheetReader
                 if (value is decimal dec && dec == 0m)
                     return true;
 
+                if (value is DateTime dt && dt == DateTime.MinValue)
+                    return true;
+
+                if (value is DateTimeOffset dto && dto == DateTimeOffset.MinValue)
+                    return true;
+
+                if (value is TimeSpan ts && ts == TimeSpan.Zero)
+                    return true;
+
+                if (value is Guid g && g == Guid.Empty)
+                    return true;
+
                 if (value is uint ui && ui == 0)
                     return true;
 
@@ -224,14 +236,18 @@ namespace SheetReader
 
             void writePositionedCell(BookDocumentCell? cell, int rowIndex, int columnIndex)
             {
-                // don't output null values
-                if (cell == null || cell.Value == null || Convert.IsDBNull(cell.Value))
-                    return;
-
                 writer.WriteStartObject();
                 writer.WriteNumber("r", rowIndex);
                 writer.WriteNumber("c", columnIndex);
                 writer.WritePropertyName("value");
+
+                // don't output null values
+                if (cell == null || cell.Value == null || Convert.IsDBNull(cell.Value))
+                {
+                    writer.WriteNullValue();
+                    writer.WriteEndObject();
+                    return;
+                }
 
                 if (cell.IsError)
                 {
@@ -304,6 +320,20 @@ namespace SheetReader
                 if (cell.Value is decimal dec)
                 {
                     writer.WriteNumberValue(dec);
+                    writer.WriteEndObject();
+                    return;
+                }
+
+                if (cell.Value is DateTime dt)
+                {
+                    writer.WriteStringValue(dt.ToString("u"));
+                    writer.WriteEndObject();
+                    return;
+                }
+
+                if (cell.Value is DateTimeOffset dto)
+                {
+                    writer.WriteStringValue(dto.ToString("u"));
                     writer.WriteEndObject();
                     return;
                 }
@@ -420,6 +450,18 @@ namespace SheetReader
                     return;
                 }
 
+                if (cell.Value is DateTime dt)
+                {
+                    writer.WriteStringValue(dt.ToString("u"));
+                    return;
+                }
+
+                if (cell.Value is DateTimeOffset dto)
+                {
+                    writer.WriteStringValue(dto.ToString("u"));
+                    return;
+                }
+
                 if (cell.Value is byte[] bytes)
                 {
                     writer.WriteBase64StringValue(bytes);
@@ -481,7 +523,7 @@ namespace SheetReader
                         row?.Cells.TryGetValue(columnIndex, out cell);
                         if (!options.HasFlag(ExportOptions.JsonNoDefaultCellValues) || (cell != null && !isDefaultJsonValue(cell.Value)))
                         {
-                            string colName = colNames[columnIndex];
+                            var colName = colNames[columnIndex];
                             writer.WritePropertyName(colName);
                             writeCell(cell);
                         }
@@ -547,7 +589,10 @@ namespace SheetReader
                                 {
                                     if (row.Cells.TryGetValue(columnIndex, out var cell))
                                     {
-                                        writePositionedCell(cell, rowIndex, columnIndex);
+                                        if (!options.HasFlag(ExportOptions.JsonNoDefaultCellValues) || (cell != null && !isDefaultJsonValue(cell.Value)))
+                                        {
+                                            writePositionedCell(cell, rowIndex, columnIndex);
+                                        }
                                     }
                                 }
                             }

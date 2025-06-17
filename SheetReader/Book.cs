@@ -259,15 +259,15 @@ namespace SheetReader
             public override IEnumerable<Column> EnumerateColumns()
             {
                 var count = 0;
-                foreach (var item in EnumerateDeclaredColumns())
-                {
-                    yield return item;
-                    count++;
-                }
-
                 foreach (var kv in _columnsFromRows)
                 {
                     yield return new Column { Index = kv.Value, Name = kv.Key };
+                    count++;
+                }
+
+                foreach (var item in EnumerateDeclaredColumns())
+                {
+                    yield return item;
                     count++;
                 }
 
@@ -585,13 +585,16 @@ namespace SheetReader
                         yield break;
                     }
 
-                    foreach (var property in Element.EnumerateObject())
+                    if (!Format.Options.HasFlag(JsonBookOptions.DontAddColumnsFromRows))
                     {
-                        var index = Sheet.AddOrGetColumnFromRows(property.Name);
-                        var cellElement = Element.GetProperty(property.Name);
-                        var cell = Sheet.ReadCell(cellElement);
-                        cell.ColumnIndex = index;
-                        yield return cell;
+                        foreach (var property in Element.EnumerateObject())
+                        {
+                            var index = Sheet.AddOrGetColumnFromRows(property.Name);
+                            var cellElement = Element.GetProperty(property.Name);
+                            var cell = Sheet.ReadCell(cellElement);
+                            cell.ColumnIndex = index;
+                            yield return cell;
+                        }
                     }
                 }
             }

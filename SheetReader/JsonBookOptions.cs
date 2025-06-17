@@ -7,6 +7,7 @@ namespace SheetReader
     {
         None = 0x0,
         ParseDates = 0x1,
+        DontAddColumnsFromRows = 0x2,
 
         Default = ParseDates,
     }

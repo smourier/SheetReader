@@ -1816,12 +1816,10 @@ namespace SheetReader
 	                            {
 	                                for (var columnIndex = sheet.FirstColumnIndex.Value; columnIndex <= sheet.LastColumnIndex.Value; columnIndex++)
 	                                {
-	                                    if (row.Cells.TryGetValue(columnIndex, out var cell))
+	                                    if (row.Cells.TryGetValue(columnIndex, out var cell) &&
+	                                        (!options.HasFlag(ExportOptions.JsonNoDefaultCellValues) || (cell != null && !isDefaultJsonValue(cell.Value))))
 	                                    {
-	                                        if (!options.HasFlag(ExportOptions.JsonNoDefaultCellValues) || (cell != null && !isDefaultJsonValue(cell.Value)))
-	                                        {
-	                                            writePositionedCell(cell, rowIndex, columnIndex);
-	                                        }
+	                                        writePositionedCell(cell, rowIndex, columnIndex);
 	                                    }
 	                                }
 	                            }
@@ -2233,7 +2231,6 @@ namespace SheetReader
 	                        rows[index] = row.row;
 	                        row.row.SortIndex = index++;
 	                    }
-	                    index += missingRows;
 	                }
 	
 	                _rows = rows;

@@ -204,7 +204,6 @@ namespace SheetReader
                         rows[index] = row.row;
                         row.row.SortIndex = index++;
                     }
-                    index += missingRows;
                 }
 
                 _rows = rows;

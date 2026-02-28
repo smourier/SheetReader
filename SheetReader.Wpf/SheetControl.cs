@@ -429,17 +429,10 @@ namespace SheetReader.Wpf
 
         private void ReleaseCapture(bool commit)
         {
-            if (_sizingColumn != null)
-            {
-                _sizingColumn.Release(commit);
-                _sizingColumn = null;
-            }
-
-            if (_movingColumn != null)
-            {
-                _movingColumn.Release(commit);
-                _movingColumn = null;
-            }
+            _sizingColumn?.Release(commit);
+            _sizingColumn = null;
+            _movingColumn?.Release(commit);
+            _movingColumn = null;
 
             Cursor = null;
             ReleaseMouseCapture();

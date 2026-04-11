@@ -23,8 +23,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 /*
-AssemblyVersion: 3.4.1.0
-AssemblyFileVersion: 3.4.1.0
+AssemblyVersion: 3.4.2.0
+AssemblyFileVersion: 3.4.2.0
 */
 using Extensions = SheetReader.Utilities.Extensions;
 using SheetReader.Utilities;
@@ -2735,16 +2735,7 @@ namespace SheetReader
 	
 	                    if (c == Quote)
 	                    {
-	                        if (next == Quote)
-	                        {
-	                            BaseReader.Read();
-	                            hasCell = true;
-	                            cell.Append(Quote);
-	                        }
-	                        else
-	                        {
-	                            inQuote = true;
-	                        }
+	                        inQuote = true;
 	                        continue;
 	                    }
 	

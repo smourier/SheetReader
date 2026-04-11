@@ -189,16 +189,7 @@ namespace SheetReader
 
                     if (c == Quote)
                     {
-                        if (next == Quote)
-                        {
-                            BaseReader.Read();
-                            hasCell = true;
-                            cell.Append(Quote);
-                        }
-                        else
-                        {
-                            inQuote = true;
-                        }
+                        inQuote = true;
                         continue;
                     }
 

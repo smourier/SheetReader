@@ -39,7 +39,7 @@ Can be programmatically customized to use different styles (color, alignement, e
 
 ![image](https://github.com/smourier/SheetReader/assets/5328574/dd2d5a2b-fb14-41a2-a116-9ab8d67ec4c4)
 
-Also supports column sorting, by mouse double-click on column header or programmatically. Can be programmatically customized to use different comparisoo algorithms.
+Also supports column sorting, by mouse double-click on column header or programmatically. Can be programmatically customized to use different comparison algorithms.
 
 ![image](https://github.com/user-attachments/assets/9b06dd43-1bbb-47d3-bb6d-748c91aec8fd)
 

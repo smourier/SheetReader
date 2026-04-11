@@ -26,7 +26,7 @@ Example:
 
 The reader code (not the WPF control and sample) is also available as a single .cs file: [SheetReader.cs](Amalgamation/SheetReader.cs)
 
-There's also a read-only WPF control that allows to see what's been read by the **SheetReader**:
+There's also a read-only WPF control that allows to see what's been read by the **SheetReader**, whatever the input was (CSV, XLSX or JSON):
 
 ![image](https://github.com/smourier/SheetReader/assets/5328574/6c32c034-0703-4879-88b7-7a615bfffee1)
 
